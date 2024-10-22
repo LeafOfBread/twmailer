@@ -235,12 +235,12 @@ int recvFromClient(int clientSocket, std::vector<TextPreset>& n) {
 
 // Main function to handle the server and client connections
 int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cerr << "Usage: ./server <port>" << std::endl;
+    if (argc != 2) { // Change this to expect exactly one argument for the port
+        std::cerr << "Usage: " << argv[0] << " <port>" << std::endl;
         return 1;
     }
 
-    int port = std::stoi(argv[2]);
+    int port = std::stoi(argv[1]); // Use argv[1] for the port
     std::vector<TextPreset> savedMSG;
 
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
