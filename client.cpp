@@ -28,7 +28,7 @@ public:
 
         std::string command;
         while (true) {
-            std::cout << "Enter command (SEND, LIST, READ, DEL, QUIT): ";
+            std::cout << "Enter command | SEND | LIST | READ | DEL | QUIT |";
             std::getline(std::cin, command);
 
             if (command == "QUIT") {
@@ -79,18 +79,18 @@ private:
     }
 
     void listMessages(int sock) {
-        std::string username;
-        std::cout << "Enter username: ";
-        std::getline(std::cin, username);
+    std::string username;
+    std::cout << "Enter username: ";
+    std::getline(std::cin, username);
 
-        std::string message = "LIST\n" + username + "\n";
-        send(sock, message.c_str(), message.size(), 0);
+    std::string message = "LIST\n" + username + "\n";
+    send(sock, message.c_str(), message.size(), 0);
 
-        char buffer[BUFFER_SIZE];
-        recv(sock, buffer, sizeof(buffer) - 1, 0);
-        buffer[BUFFER_SIZE - 1] = '\0';
-        std::cout << buffer;
-    }
+    char buffer[BUFFER_SIZE];
+    ssize_t bytes_received = recv(sock, buffer, sizeof(buffer) - 1, 0);
+    buffer[bytes_received] = '\0';  // Ensure null-termination
+    std::cout << buffer;
+}
 
     void readMessage(int sock) {
         std::string username, messageId;

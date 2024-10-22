@@ -114,30 +114,42 @@ private:
     }
 
     void processList(int client_fd, const std::string& message) {
-        std::istringstream iss(message);
-        std::string command, username;
-        std::getline(iss, command, '\n');
-        std::getline(iss, username, '\n');
+    std::istringstream iss(message);
+    std::string command, username;
+    std::getline(iss, command, '\n');
+    std::getline(iss, username, '\n');
 
-        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
-        std::ifstream infile(message_filename);
-        if (infile.is_open()) {
-            std::string line;
-            std::string response;
-            int id = 0;
-            while (std::getline(infile, line)) {
-                // Output only the subject for listing
-                if (line.substr(0, 8) == "Subject: ") {
-                    response += "ID: " + std::to_string(id) + "\n" + line + "\n";
-                    id++;
-                }
+    std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+    std::ifstream infile(message_filename);
+    if (infile.is_open()) {
+        std::string line;
+        std::string response;
+        int id = 0;
+        bool foundMessage = false;
+
+        // Read lines from the file
+        while (std::getline(infile, line)) {
+            if (line.substr(0, 8) == "Subject: ") {
+                foundMessage = true;
+                response += "ID: " + std::to_string(id) + "\n" + line + "\n";
+                id++;
             }
-            infile.close();
-            send(client_fd, response.empty() ? "No messages found.\n" : response.c_str(), response.size(), 0);
+            // Skip the content line to avoid reading it in the response
+            std::getline(infile, line); // Skip the content line
+        }
+
+        infile.close();
+
+        if (foundMessage) {
+            send(client_fd, response.c_str(), response.size(), 0);
         } else {
             send(client_fd, "No messages found.\n", 19, 0);
         }
+    } else {
+        send(client_fd, "No messages found.\n", 19, 0);
     }
+}
+
 
     void processRead(int client_fd, const std::string& message) {
         std::istringstream iss(message);
@@ -178,46 +190,60 @@ private:
     }
 
     void processDelete(int client_fd, const std::string& message) {
-        std::istringstream iss(message);
-        std::string command, username, messageId;
-        std::getline(iss, command, '\n');
-        std::getline(iss, username, '\n');
-        std::getline(iss, messageId, '\n');
+    std::istringstream iss(message);
+    std::string command, username, messageId;
+    std::getline(iss, command, '\n');
+    std::getline(iss, username, '\n');
+    std::getline(iss, messageId, '\n');
 
-        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
-        std::ifstream infile(message_filename);
-        std::vector<std::string> messages;
-        std::string line;
+    std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+    std::ifstream infile(message_filename);
+    std::vector<std::string> messages;
+    std::string line;
 
-        if (infile.is_open()) {
-            while (std::getline(infile, line)) {
-                messages.push_back(line);
-                // Skip the next lines (subject and content)
-                std::getline(infile, line);
-                std::getline(infile, line);
-            }
-            infile.close();
+    if (infile.is_open()) {
+        while (std::getline(infile, line)) {
+            messages.push_back(line);
+            // Skip the next lines (subject and content)
+            std::getline(infile, line);
+            std::getline(infile, line);
         }
-
-        std::size_t id = std::stoi(messageId);
-        if (id >= messages.size() / 3) {
-            send(client_fd, "Invalid message ID.\n", 20, 0);
-            return;
-        }
-
-        messages.erase(messages.begin() + (id * 3), messages.begin() + (id * 3) + 3); // Remove the message and its subject and content
-
-        std::ofstream outfile(message_filename);
-        if (outfile.is_open()) {
-            for (const auto& msg : messages) {
-                outfile << msg << "\n"; // Write the remaining messages back to the file
-            }
-            outfile.close();
-            send(client_fd, "Message deleted successfully.\n", 30, 0);
-        } else {
-            send(client_fd, "Error saving changes.\n", 22, 0);
-        }
+        infile.close();
+    } else {
+        send(client_fd, "Message file not found.\n", 24, 0);
+        return;
     }
+
+    // Change id to size_t and check bounds
+    std::size_t id;
+    try {
+        id = std::stoi(messageId);
+    } catch (...) {
+        send(client_fd, "Invalid message ID format.\n", 28, 0);
+        return;
+    }
+
+    if (id >= messages.size() / 3) {
+        send(client_fd, "Invalid message ID.\n", 20, 0);
+        return;
+    }
+
+    // Calculate the starting index for the message to be deleted
+    std::size_t start_index = id * 3; // 3 lines per message (sender, subject, content)
+    messages.erase(messages.begin() + start_index, messages.begin() + start_index + 3); // Remove the message and its subject and content
+
+    std::ofstream outfile(message_filename);
+    if (outfile.is_open()) {
+        for (const auto& msg : messages) {
+            outfile << msg << "\n"; // Write the remaining messages back to the file
+        }
+        outfile.close();
+        send(client_fd, "Message deleted successfully.\n", 30, 0);
+    } else {
+        send(client_fd, "Error saving changes.\n", 22, 0);
+    }
+}
+
 };
 
 int main(int argc, char* argv[]) {
