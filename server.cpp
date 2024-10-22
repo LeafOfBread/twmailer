@@ -1,288 +1,236 @@
 #include <iostream>
 #include <cstring>
-#include <arpa/inet.h>
-#include <sys/socket.h>
 #include <unistd.h>
-#include <string>
+#include <arpa/inet.h>
 #include <vector>
-#include <cmath>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
 
-const int _blockSIZE = 1024;
-const int MAX_HOST = 1024;  // Hostname buffer size
-const int MAX_SERV = 32;    // Service name buffer size
+const int BUFFER_SIZE = 1024;
 
-// Struct for TextPreset data
-struct TextPreset {
-    int packageNUM = 1;
-    std::string delim = "\n";
-    int length = 0;
-    int type = 0;
-    std::string argument, sender, subject, text, username, infoString;
-    bool error = false;
-    int ID = 0;
+struct Message {
+    std::string sender;
+    std::string subject;
+    std::string content;
 };
 
-// Enum to define operation types
-enum Type {
-    SEND = 1,
-    READ = 2,
-    LIST = 3,
-    DEL = 4,
-    QUIT = 5,
-    COMMENT = 0,
-};
-
-// Function to reset TextPreset struct
-TextPreset resetTP() {
-    return TextPreset{};
-}
-
-// Function to parse information
-TextPreset parseINFO(TextPreset tp, const std::string& info) {
-    std::string parseTemp;
-    int j = 0;
-
-    for (char c : info) {
-        if (c == '\n') {
-            switch (j++) {
-                case 0: tp.type = std::stoi(parseTemp); break;
-                case 1: tp.packageNUM = std::stoi(parseTemp); break;
-                case 2: tp.length = std::stoi(parseTemp); break;
-            }
-            parseTemp.clear();
-        } else {
-            parseTemp += c;
+class MailServer {
+public:
+    MailServer(int port, const std::string& spoolDirectory) : port(port), spoolDirectory(spoolDirectory) {
+        if (!std::filesystem::exists(spoolDirectory)) {
+            std::filesystem::create_directory(spoolDirectory);
         }
     }
-    return tp;
-}
 
-// Function to parse SEND messages
-TextPreset parseSEND(TextPreset tp, const std::string& sendMESS) {
-    std::string parseTemp;
-    int j = 0;
-
-    for (char c : sendMESS) {
-        if (c == '\n') {
-            switch (j++) {
-                case 0: tp.argument = parseTemp; break;
-                case 1: tp.sender = parseTemp; break;
-                case 2: tp.subject = parseTemp; break;
-                default: tp.text += parseTemp; break;
-            }
-            parseTemp.clear();
-            j++;
-        } else {
-            parseTemp += c;
-        }
-    }
-    return tp;
-}
-
-// Helper function to handle received data and save messages
-void initializeSENDSAVE(TextPreset tp, int clientSocket, std::vector<TextPreset>& n) {
-    char buffer[_blockSIZE] = {0};
-    int errRcv = recv(clientSocket, buffer, sizeof(buffer), 0);
-
-    if (errRcv == -1) {
-        std::cerr << "Error in initialize single pack" << std::endl;
-        return;
-    }
-
-    buffer[errRcv] = '\n';
-    tp = parseSEND(tp, std::string(buffer));
-    n.push_back(tp);
-}
-
-// Helper function for handling message packages
-void initializeSENDSAVE_Packages(TextPreset tp, int clientSocket, std::vector<TextPreset>& n) {
-    std::string completeMessage;
-    int currentPackage = 1;
-
-    while (currentPackage <= tp.packageNUM) {
-        char buffer[_blockSIZE];
-        int errRcv = recv(clientSocket, buffer, sizeof(buffer), 0);
-
-        if (errRcv == -1) {
-            std::cerr << "Error receiving package " << currentPackage << std::endl;
+    void start() {
+        int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (server_fd == -1) {
+            std::cerr << "Socket creation failed!" << std::endl;
             return;
         }
-        completeMessage.append(buffer, errRcv);
-        ++currentPackage;
+
+        sockaddr_in server_address;
+        server_address.sin_family = AF_INET;
+        server_address.sin_addr.s_addr = INADDR_ANY;
+        server_address.sin_port = htons(port);
+
+        if (bind(server_fd, (struct sockaddr*)&server_address, sizeof(server_address)) < 0) {
+            std::cerr << "Binding failed!" << std::endl;
+            return;
+        }
+
+        listen(server_fd, 3);
+        std::cout << "Server listening on port " << port << std::endl;
+
+        while (true) {
+            sockaddr_in client_address;
+            socklen_t addr_len = sizeof(client_address);
+            int client_fd = accept(server_fd, (struct sockaddr*)&client_address, &addr_len);
+            if (client_fd < 0) {
+                std::cerr << "Failed to accept client connection!" << std::endl;
+                continue;
+            }
+
+            handleClient(client_fd);
+            close(client_fd);
+        }
+
+        close(server_fd);
     }
 
-    tp = parseSEND(tp, completeMessage);
-    n.push_back(tp);
-}
+private:
+    int port;
+    std::string spoolDirectory;
 
-// Function to handle the LIST functionality
-void LISTsendFunct(int clientSocket, const std::vector<TextPreset>& n, const TextPreset& tp) {
-    std::string LISTstring;
-    bool sendUSERLIST = false;
+    void handleClient(int client_fd) {
+        char buffer[BUFFER_SIZE];
+        std::string message;
 
-    for (size_t i = 0; i < n.size(); ++i) {
-        if (n[i].sender == tp.sender) {
-            LISTstring += std::to_string(i) + "\n" + n[i].sender + "\n" + n[i].subject + "\n" + n[i].text.substr(0, 10) + "\n";
-            sendUSERLIST = true;
+        while (true) {
+            ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0);
+            if (bytes_received <= 0) {
+                std::cerr << "Client disconnected or error occurred!" << std::endl;
+                break;
+            }
+
+            buffer[bytes_received] = '\0';
+            message = buffer;
+
+            if (message.substr(0, 4) == "SEND") {
+                processSend(client_fd, message);
+            } else if (message.substr(0, 4) == "LIST") {
+                processList(client_fd, message);
+            } else if (message.substr(0, 4) == "READ") {
+                processRead(client_fd, message);
+            } else if (message.substr(0, 3) == "DEL") {
+                processDelete(client_fd, message);
+            } else if (message.substr(0, 4) == "QUIT") {
+                break;
+            }
         }
     }
 
-    if (LISTstring.size() > _blockSIZE - 1) {
-        std::cerr << "LIST too large to send" << std::endl;
-    }
+    void processSend(int client_fd, const std::string& message) {
+        std::istringstream iss(message);
+        std::string command, username, subject, content;
+        std::getline(iss, command, '\n');
+        std::getline(iss, username, '\n');
+        std::getline(iss, subject, '\n');
+        std::getline(iss, content, '\n');
 
-    if (!sendUSERLIST) {
-        send(clientSocket, "ERR\n", sizeof("ERR\n"), 0);
-    } else {
-        send(clientSocket, LISTstring.c_str(), LISTstring.size(), 0);
-    }
-}
-
-// Helper function to calculate and package info string
-TextPreset calcINFOstring(TextPreset tp, int type) {
-    tp.type = type;
-    std::string tempString;
-
-    if (type == SEND) {
-        tempString = tp.argument + "\n" + tp.sender + "\n" + tp.subject + "\n" + tp.text + "\n";
-        tp.length = tempString.size();
-    } else if (type == READ) {
-        tempString = tp.username + "\n" + std::to_string(tp.ID) + "\n";
-        tp.length = tempString.size();
-    }
-
-    tp.packageNUM = std::ceil(static_cast<double>(tp.length) / _blockSIZE);
-    tp.infoString = std::to_string(tp.type) + "\n" + std::to_string(tp.packageNUM) + "\n" + std::to_string(tp.length) + "\n";
-
-    return tp;
-}
-
-// Function to send message string in packages
-int sendMESSstring_Packages(int clientSocket, const TextPreset& tp) {
-    std::string SENDstring = tp.argument + "\n" + tp.sender + "\n" + tp.subject + "\n" + tp.text + "\n";
-    int totalLength = SENDstring.size();
-    int sentBytes = 0;
-
-    for (int i = 0; i < tp.packageNUM; ++i) {
-        int remainingBytes = totalLength - sentBytes;
-        int currentBlockSize = std::min(_blockSIZE - 1, remainingBytes);
-        std::string currentBlock = SENDstring.substr(sentBytes, currentBlockSize) + '\n';
-
-        int bytesSent = send(clientSocket, currentBlock.c_str(), currentBlock.size(), 0);
-        if (bytesSent == -1) {
-            std::cerr << "Error sending package " << i + 1 << std::endl;
-            return -1;
+        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+        std::ofstream outfile(message_filename, std::ios::app);
+        if (outfile.is_open()) {
+            outfile << "Sender: " << username << "\n"
+                    << "Subject: " << subject << "\n"
+                    << "Content: " << content << "\n"
+                    << "-----\n";
+            outfile.close();
+            send(client_fd, "Message sent successfully.\n", 28, 0);
+        } else {
+            send(client_fd, "Error saving message.\n", 22, 0);
         }
-        sentBytes += currentBlockSize;
     }
 
-    return 0;
-}
+    void processList(int client_fd, const std::string& message) {
+        std::istringstream iss(message);
+        std::string command, username;
+        std::getline(iss, command, '\n');
+        std::getline(iss, username, '\n');
 
-// Function to handle receiving and processing client messages
-int recvFromClient(int clientSocket, std::vector<TextPreset>& n) {
-    TextPreset tpRECV = resetTP();
-    char buffer[_blockSIZE] = {0};
-    int errRCV = recv(clientSocket, buffer, sizeof(buffer), 0);
-
-    if (errRCV == -1) {
-        std::cerr << "Error in recvFromClient" << std::endl;
-        send(clientSocket, "ERR\n", sizeof("ERR\n"), 0);
-        return -1;
+        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+        std::ifstream infile(message_filename);
+        if (infile.is_open()) {
+            std::string line;
+            std::string response;
+            int id = 0;
+            while (std::getline(infile, line)) {
+                // Output only the subject for listing
+                if (line.substr(0, 8) == "Subject: ") {
+                    response += "ID: " + std::to_string(id) + "\n" + line + "\n";
+                    id++;
+                }
+            }
+            infile.close();
+            send(client_fd, response.empty() ? "No messages found.\n" : response.c_str(), response.size(), 0);
+        } else {
+            send(client_fd, "No messages found.\n", 19, 0);
+        }
     }
 
-    buffer[errRCV] = '\n';
-    tpRECV = parseINFO(tpRECV, std::string(buffer));
+    void processRead(int client_fd, const std::string& message) {
+        std::istringstream iss(message);
+        std::string command, username, messageId;
+        std::getline(iss, command, '\n');
+        std::getline(iss, username, '\n');
+        std::getline(iss, messageId, '\n');
 
-    switch (tpRECV.type) {
-        case SEND:
-            send(clientSocket, "OK\n", sizeof("OK\n"), 0);
-            (tpRECV.packageNUM == 1) ? initializeSENDSAVE(tpRECV, clientSocket, n) : initializeSENDSAVE_Packages(tpRECV, clientSocket, n);
-            return SEND;
-        case READ:
-            if (n.empty()) {
-                send(clientSocket, "ERR\n", sizeof("ERR\n"), 0);
-            } else {
-                send(clientSocket, "OK\n", sizeof("OK\n"), 0);
-                // Call function for handling READ
+        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+        std::ifstream infile(message_filename);
+        if (infile.is_open()) {
+            std::string line;
+            int id = std::stoi(messageId);
+            int currentId = 0;
+            std::string response;
+            while (std::getline(infile, line)) {
+                if (line.substr(0, 8) == "Sender: ") {
+                    if (currentId == id) {
+                        response += line + "\n";  // Sender
+                        std::getline(infile, line); // Subject
+                        response += line + "\n";  // Subject
+                        std::getline(infile, line); // Content
+                        response += line + "\n";  // Content
+                        response += "-----\n";  // Separator
+                        send(client_fd, response.c_str(), response.size(), 0);
+                        return;
+                    }
+                    currentId++;
+                    std::getline(infile, line); // Skip subject
+                    std::getline(infile, line); // Skip content
+                }
             }
-            return READ;
-        case LIST:
-            if (n.empty()) {
-                send(clientSocket, "ERR\n", sizeof("ERR\n"), 0);
-            } else {
-                send(clientSocket, "OK\n", sizeof("OK\n"), 0);
-                LISTsendFunct(clientSocket, n, tpRECV);
-            }
-            return LIST;
-        case DEL:
-            if (!n.empty()) {
-                send(clientSocket, "OK\n", sizeof("OK\n"), 0);
-                // Handle deletion process
-            } else {
-                send(clientSocket, "ERR\n", sizeof("ERR\n"), 0);
-            }
-            return DEL;
-        case QUIT:
-            send(clientSocket, "OK\n", sizeof("OK\n"), 0);
-            return QUIT;
-        default:
-            std::cout << "CLIENT: " << buffer << std::endl;
+            infile.close();
+            send(client_fd, "Message not found.\n", 20, 0);
+        } else {
+            send(client_fd, "Message not found.\n", 20, 0);
+        }
     }
 
-    return 0;
-}
+    void processDelete(int client_fd, const std::string& message) {
+        std::istringstream iss(message);
+        std::string command, username, messageId;
+        std::getline(iss, command, '\n');
+        std::getline(iss, username, '\n');
+        std::getline(iss, messageId, '\n');
 
-// Main function to handle the server and client connections
+        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+        std::ifstream infile(message_filename);
+        std::vector<std::string> messages;
+        std::string line;
+
+        if (infile.is_open()) {
+            while (std::getline(infile, line)) {
+                messages.push_back(line);
+                // Skip the next lines (subject and content)
+                std::getline(infile, line);
+                std::getline(infile, line);
+            }
+            infile.close();
+        }
+
+        std::size_t id = std::stoi(messageId);
+        if (id >= messages.size() / 3) {
+            send(client_fd, "Invalid message ID.\n", 20, 0);
+            return;
+        }
+
+        messages.erase(messages.begin() + (id * 3), messages.begin() + (id * 3) + 3); // Remove the message and its subject and content
+
+        std::ofstream outfile(message_filename);
+        if (outfile.is_open()) {
+            for (const auto& msg : messages) {
+                outfile << msg << "\n"; // Write the remaining messages back to the file
+            }
+            outfile.close();
+            send(client_fd, "Message deleted successfully.\n", 30, 0);
+        } else {
+            send(client_fd, "Error saving changes.\n", 22, 0);
+        }
+    }
+};
+
 int main(int argc, char* argv[]) {
-    if (argc != 2) { // Change this to expect exactly one argument for the port
-        std::cerr << "Usage: " << argv[0] << " <port>" << std::endl;
+    if (argc != 3) {
+        std::cerr << "Usage: ./twmailer-server <port> <mail-spool-directoryname>" << std::endl;
         return 1;
     }
 
-    int port = std::stoi(argv[1]); // Use argv[1] for the port
-    std::vector<TextPreset> savedMSG;
+    int port = std::stoi(argv[1]);
+    std::string spoolDirectory = argv[2];
 
-    int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverSocket == -1) {
-        std::cerr << "Error creating socket" << std::endl;
-        return 1;
-    }
+    MailServer server(port, spoolDirectory);
+    server.start();
 
-    sockaddr_in serverAddress{};
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(port);
-    serverAddress.sin_addr.s_addr = INADDR_ANY;
-
-    if (bind(serverSocket, (sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
-        std::cerr << "Error binding socket" << std::endl;
-        return 1;
-    }
-
-    if (listen(serverSocket, SOMAXCONN) == -1) {
-        std::cerr << "Error listening on socket" << std::endl;
-        return 1;
-    }
-
-    sockaddr_in clientAddress{};
-    socklen_t clientSize = sizeof(clientAddress);
-    char host[MAX_HOST];
-    char service[MAX_SERV];
-
-    while (true) {
-        int clientSocket = accept(serverSocket, (sockaddr*)&clientAddress, &clientSize);
-        if (clientSocket == -1) {
-            std::cerr << "Error accepting connection" << std::endl;
-            continue;
-        }
-
-        memset(host, 0, MAX_HOST);
-        memset(service, 0, MAX_SERV);
-
-        recvFromClient(clientSocket, savedMSG);
-        close(clientSocket);
-    }
-
-    close(serverSocket);
     return 0;
 }
