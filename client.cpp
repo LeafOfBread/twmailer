@@ -7,7 +7,8 @@ const int BUFFER_SIZE = 2048;
 
 class MailClient {
 public:
-    MailClient(const std::string& serverIP, int serverPort) : serverIP(serverIP), serverPort(serverPort) {} 
+    MailClient(const std::string& serverIP, int serverPort) : serverIP(serverIP), serverPort(serverPort) {}
+    bool isLoggedIn = false;
 
     void start() {  // Start the client
         int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -28,7 +29,8 @@ public:
 
         std::string command;
         while (true) {  // Main loop
-            std::cout << "Enter command | SEND | LIST | READ | DEL | QUIT |";
+            if(!isLoggedIn) std::cout << "Enter command | LOGIN |";
+            else std::cout << "Enter command | SEND | LIST | READ | DEL | QUIT |";
             std::getline(std::cin, command);
 
             if (command == "QUIT") {
@@ -47,6 +49,12 @@ private:
     int serverPort;
 
     void handleCommand(int sock, const std::string& command) {  // Handle the user's command
+    if(!isLoggedIn)
+    {
+        if (command == "LOGIN") userLogin(sock);
+        else std::cerr << "User isn't logged in!\n";
+    }
+    else{
         if (command == "SEND") {
             sendMessage(sock);
         } else if (command == "LIST") {
@@ -58,6 +66,7 @@ private:
         } else {
             std::cerr << "Unknown command!" << std::endl;
         }
+    }
     }
 
     void sendMessage(int sock) {    // Send a message to the server
@@ -132,6 +141,22 @@ private:
         char buffer[BUFFER_SIZE];
         recv(sock, buffer, sizeof(buffer) - 1, 0);  // Receive the server's response
         buffer[BUFFER_SIZE - 1] = '\0';
+        std::cout << buffer;
+    }
+
+    void userLogin(int sock){   //log in the user via ldap
+        std::string username, password;
+        std::cout << "Enter Username: ";
+        std::getline(std::cin, username);
+        std::cout << "Enter Password: ";
+        std::getline(std::cin, password);
+
+        std::string message = "LOGIN\n" + username + "\n" + password + "\n";
+        send(sock, message.c_str(), message.size(), 0);
+
+        char buffer[BUFFER_SIZE];
+        recv(sock, buffer, sizeof(buffer) -1, 0);
+        buffer[BUFFER_SIZE -1] = '\0';
         std::cout << buffer;
     }
 };
