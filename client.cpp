@@ -145,13 +145,11 @@ private:
     }
 
     void userLogin(int sock){   //log in the user via ldap
-        std::string username, password;
+        std::string username;
         std::cout << "Enter Username: ";
         std::getline(std::cin, username);
-        std::cout << "Enter Password: ";
-        std::getline(std::cin, password);
 
-        std::string message = "LOGIN\n" + username + "\n" + password + "\n";
+        std::string message = "LOGIN\n" + username + "\n";
         send(sock, message.c_str(), message.size(), 0);
 
         char buffer[BUFFER_SIZE];

@@ -127,6 +127,7 @@ private:
                 {
                     processLogin(client_fd, message);
                 }
+                else if (message.substr(0, 4) == "QUIT") exit(0);
             }
         }
     }
@@ -300,14 +301,162 @@ private:
     {
         // TODO
         std::istringstream iss(message);
-        std::string command, username, password;
+        std::string command, username;
         std::getline(iss, command, '\n');
         printf("%s\n", command.c_str());
         std::getline(iss, username, '\n');
         printf("%s\n", username.c_str());
-        std::getline(iss, password, '\n');
-        printf("%s\n", password.c_str());
-        this->isLoggedIn = true;
+
+        const char *ldapUri = "ldap://ldap.technikum-wien.at:380";
+        const int ldapVersion = LDAP_VERSION3;
+        char ldapBindUser[256];
+        char rawLdapUser[128];
+
+        if (username != "")
+        {
+            strcpy(rawLdapUser, username.c_str());
+            sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
+            printf("user set to: %s\n", ldapBindUser);
+        }
+        else
+        {
+            const char *rawLdapUserEnv = getenv("ldapuser");
+            if (rawLdapUserEnv == NULL)
+            {
+                printf("user not found... set to empty string\n");
+                strcpy(ldapBindUser, "");
+            }
+            else
+            {
+                sprintf(ldapBindUser, "uid%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
+                printf("user based on environment variable ldap user set to: %s\n", ldapBindUser);
+            }
+        }
+        char ldapBindPassword[256];
+        strcpy(ldapBindPassword, getpass());
+        printf("pw taken over from commandline\n");
+        //printf("%s", ldapBindPassword);
+
+        //const char *ldapBindPasswordEnv = getenv("ldappw");
+        /*if (ldapBindPasswordEnv == NULL)
+        {
+            strcpy(ldapBindPassword, "");
+            printf("given password is empty. set to empty string\n");
+        }
+        else
+        {
+            strcpy(ldapBindPassword, ldapBindPasswordEnv);
+            printf("pw taken over from environment variable ldappw\n");
+        }*/
+        const char *ldapSearchBaseDomainComponent = "dc=technikum-wien,dc=at";
+        const char *ldapSearchFilter = "(uid=if23b*)";
+        ber_int_t ldapSearchScope = LDAP_SCOPE_SUBTREE;
+        const char *ldapSearchResultAttributes[] = {"uid", "cn", NULL};
+
+        int rc = 0;
+
+        LDAP *ldapHandle;
+        rc = ldap_initialize(&ldapHandle, ldapUri);
+        if (rc != LDAP_SUCCESS)
+        {
+            fprintf(stderr, "ldap_init failed\n");
+            return;
+        }
+        printf("connected to LDAP server %s\n", ldapUri);
+
+        rc = ldap_set_option(ldapHandle, LDAP_OPT_PROTOCOL_VERSION, &ldapVersion);
+        if (rc != LDAP_OPT_SUCCESS)
+        {
+            fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            return;
+        }
+
+        rc = ldap_start_tls_s(ldapHandle, NULL, NULL);
+        if (rc != LDAP_SUCCESS)
+        {
+            fprintf(stderr, "ldap_start_tls_s(): %s\n", ldap_err2string(rc));
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            return;
+        }
+        BerValue bindCredentials;
+        bindCredentials.bv_val = (char *)ldapBindPassword;
+        bindCredentials.bv_len = strlen(ldapBindPassword);
+        BerValue *servercredp; // server's credentials
+        rc = ldap_sasl_bind_s(
+            ldapHandle,
+            ldapBindUser,
+            LDAP_SASL_SIMPLE,
+            &bindCredentials,
+            NULL,
+            NULL,
+            &servercredp);
+        if (rc != LDAP_SUCCESS)
+        {
+            fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            return;
+        }
+
+        LDAPMessage *searchResult;
+        rc = ldap_search_ext_s(
+            ldapHandle,
+            ldapSearchBaseDomainComponent,
+            ldapSearchScope,
+            ldapSearchFilter,
+            (char **)ldapSearchResultAttributes,
+            0,
+            NULL,
+            NULL,
+            NULL,
+            500,
+            &searchResult);
+        if (rc != LDAP_SUCCESS)
+        {
+            fprintf(stderr, "LDAP search error: %s\n", ldap_err2string(rc));
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            return;
+        }
+        printf("User Found: %d\n", ldap_count_entries(ldapHandle, searchResult));
+
+        LDAPMessage *searchResultEntry;
+        for (searchResultEntry = ldap_first_entry(ldapHandle, searchResult);
+             searchResultEntry != NULL;
+             searchResultEntry = ldap_next_entry(ldapHandle, searchResultEntry))
+        {
+
+            printf("DN: %s\n", ldap_get_dn(ldapHandle, searchResultEntry));
+
+            BerElement *ber;
+            char *searchResultEntryAttribute;
+            for (searchResultEntryAttribute = ldap_first_attribute(ldapHandle, searchResultEntry, &ber);
+                 searchResultEntryAttribute != NULL;
+                 searchResultEntryAttribute = ldap_next_attribute(ldapHandle, searchResultEntry, ber))
+            {
+                BerValue **vals;
+                if ((vals = ldap_get_values_len(ldapHandle, searchResultEntry, searchResultEntryAttribute)) != NULL)
+                {
+                    for (int i = 0; i < ldap_count_values_len(vals); i++)
+                    {
+                        printf("\t%s: %s\n", searchResultEntryAttribute, vals[i]->bv_val);
+                    }
+                    ldap_value_free_len(vals);
+                }
+
+                // free memory
+                ldap_memfree(searchResultEntryAttribute);
+            }
+            // free memory
+            if (ber != NULL)
+            {
+                ber_free(ber, 0);
+            }
+
+            printf("\n");
+        }
+        ldap_msgfree(searchResult);
+        ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+        return;
     }
 
     void processDelete(int client_fd, const std::string &message)
