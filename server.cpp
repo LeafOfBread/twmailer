@@ -103,7 +103,7 @@ private:
     void handleClient(int client_fd)
     {                             // Handle the client connection
         char buffer[BUFFER_SIZE]; // Buffer to store received data
-        
+
         bool isLoggedIn = false;
 
         int loginAttempts = 3;
@@ -137,7 +137,6 @@ private:
                 }
                 if (isLoggedIn)
                 {
-                    printf("debug\n");
                     if (message.substr(0, 4) == "SEND")
                     {
                         processSend(client_fd, message);
@@ -179,7 +178,7 @@ private:
                 }
             }
         }
-        if(isInBlackList(timestampStr, clientIp))
+        if (isInBlackList(timestampStr, clientIp))
         {
             close(client_fd);
         }
@@ -350,90 +349,139 @@ private:
         }
     }
 
-    void addToBlacklist(time_t timestamp, const std::string& clientIp)
-{
-    std::string blacklist = "blacklist.txt";         // Blacklist file name
-    std::ofstream outfile(blacklist, std::ios::app); // Open the file in append mode
-    if (outfile.is_open())
-    { 
-        // Store the IP and timestamp of when the client is added to the blacklist
-        outfile << clientIp << " " << ctime(&timestamp); 
-        outfile.close();
-        std::cout << "Successfully added Client IP to Blacklist\n" << clientIp << " " << ctime(&timestamp) << "\n";
-    }
-    else
+    void addToBlacklist(time_t timestamp, const std::string &clientIp)
     {
-        std::cout << "Error adding Client to Blacklist\n";
-    }
-}
-
-
-    bool isInBlackList(const std::string& timestampStr, const std::string& clientIp)
-{
-    std::string blacklist = "blacklist.txt"; 
-    std::ifstream infile(blacklist); 
-
-    if (!infile.is_open())
-    {
-        std::cout << "Error opening blacklist file\n";
-        return false;
-    }
-
-    std::string line;
-
-    while (std::getline(infile, line))
-    {
-        std::istringstream iss(line);
-        std::string ip;
-        std::string timestampfromFile;
-
-        // Extract the IP and timestamp from the blacklist file
-        if (iss >> ip)
+        std::string blacklist = "blacklist.txt";         // Blacklist file name
+        std::ofstream outfile(blacklist, std::ios::app); // Open the file in append mode
+        if (outfile.is_open())
         {
-            std::getline(iss, timestampfromFile);
-            timestampfromFile.erase(0, timestampfromFile.find_first_not_of(" \t"));
+            // Store the IP and timestamp of when the client is added to the blacklist
+            outfile << clientIp << " " << ctime(&timestamp);
+            outfile.close();
+            std::cout << "Successfully added Client IP to Blacklist\n"
+                      << clientIp << " " << ctime(&timestamp) << "\n";
+        }
+        else
+        {
+            std::cout << "Error adding Client to Blacklist\n";
+        }
+    }
 
-            if (ip == clientIp)
+    bool isInBlackList(const std::string &timestampStr, const std::string &clientIp)
+    {
+        std::string blacklist = "blacklist.txt";
+        std::ifstream infile(blacklist);
+
+        if (!infile.is_open())
+        {
+            std::cout << "Error opening blacklist file\n";
+            return false;
+        }
+
+        std::string line;
+
+        while (std::getline(infile, line))
+        {
+            std::istringstream iss(line);
+            std::string ip;
+            std::string timestampfromFile;
+
+            // Extract the IP and stamp from the blacklist file
+            if (iss >> ip)
             {
-                std::cout << "Found client IP: " << line << std::endl;
+                std::getline(iss, timestampfromFile);
+                timestampfromFile.erase(0, timestampfromFile.find_first_not_of(" \t"));
 
-                struct std::tm tm = {};
-                std::istringstream ss(timestampfromFile);
-                ss >> std::get_time(&tm, "%a %b %d %H:%M:%S %Y"); // Parse timestamp
-
-                if (ss.fail())
+                if (ip == clientIp)
                 {
-                    std::cout << "Failed to parse timestamp\n";
-                    continue; 
-                }
+                    std::cout << "Found client IP: " << line << std::endl;
 
-                // Convert timestamp to time_t
-                std::time_t fileTimestamp = std::mktime(&tm);
-                if (fileTimestamp == -1)
-                {
-                    std::cout << "Failed to convert timestamp to time_t\n";
-                    continue; 
-                }
+                    struct std::tm tm = {};
+                    std::istringstream ss(timestampfromFile);
+                    ss >> std::get_time(&tm, "%a %b %d %H:%M:%S %Y"); // Parse timestamp
 
-                // Get the current timestamp
-                std::time_t currentTimestamp = std::time(nullptr);
+                    if (ss.fail())
+                    {
+                        std::cout << "Failed to parse timestamp\n";
+                        continue;
+                    }
 
-                // Check if the difference is less than 60 seconds
-                double diff = std::difftime(currentTimestamp, fileTimestamp);
-                if (diff < 60)
-                {
-                    std::cout << "Client is blacklisted: " << clientIp << " for one minute\n";
-                    return true; // Client is still blacklisted
-                }
-                else
-                {
-                    std::cout << "Blacklist expired for client: " << clientIp << "\n";
-                    return false; // Blacklist has expired
+                    // Convert timestamp to time_t
+                    std::time_t fileTimestamp = std::mktime(&tm);
+                    if (fileTimestamp == -1)
+                    {
+                        std::cout << "Failed to convert timestamp to time_t\n";
+                        continue;
+                    }
+
+                    // Get the current timestamp
+                    std::time_t currentTimestamp = std::time(nullptr);
+
+                    // Check if the difference is less than 60 seconds
+                    double diff = std::difftime(currentTimestamp, fileTimestamp);
+                    if (diff < 60)
+                    {
+                        std::cout << "Client " << clientIp << " is blacklisted for one minute\n";
+                        return true; // Client is still blacklisted
+                    }
+                    else
+                    {
+                        std::cout << "Blacklist expired for client: " << clientIp << "\n";
+                        deleteEntryFromFile("blacklist.txt", clientIp.c_str());
+                        return false; // Blacklist has expired
+                    }
                 }
             }
         }
+        return false; // Return false if no matching line is found
     }
-    return false; // Return false if no matching line is found
+
+    void deleteEntryFromFile(const char *filePath, const char *ipToRemove)
+{
+    FILE *originalFile, *tempFile;
+    char line[256];
+
+    originalFile = fopen(filePath, "r");
+    if (originalFile == NULL)
+    {
+        perror("Error while opening file");
+        return;
+    }
+
+    tempFile = fopen("temp.txt", "w");
+    if (tempFile == NULL)
+    {
+        perror("Error opening temporary file");
+        fclose(originalFile);
+        return;
+    }
+
+    while (fgets(line, sizeof(line), originalFile))
+    {
+        // Check if the line starts with the IP to remove
+        if (strncmp(line, ipToRemove, strlen(ipToRemove)) == 0 && isspace(line[strlen(ipToRemove)]))
+        {
+            // Skip this line as it matches the IP to remove
+            continue;
+        }
+        fputs(line, tempFile); // Copy other lines to the temp file
+    }
+
+    fclose(originalFile);
+    fclose(tempFile);
+
+    if (remove(filePath) != 0)
+    {
+        perror("Error deleting original file");
+    }
+    else if (rename("temp.txt", filePath) != 0)
+    {
+        perror("Error renaming the temporary file");
+    }
+    else
+    {
+        printf("Entry for '%s' has been removed successfully\n", ipToRemove);
+    }
 }
 
 
@@ -448,8 +496,9 @@ private:
         time_t currentTime;
         std::string timestampStr = to_string(time(&currentTime));
 
-        if(isInBlackList(timestampStr, clientIp))
-        {   const char blacklistMessage[] = "Your IP is blacklisted. Please wait a bit to try again\n";
+        if (isInBlackList(timestampStr, clientIp))
+        {
+            const char blacklistMessage[] = "Your IP is blacklisted. Please wait a bit to try again\n";
             send(client_fd, blacklistMessage, sizeof(blacklistMessage), 0);
             return false;
         }
@@ -457,9 +506,9 @@ private:
         std::stringstream iss(message);
         std::string command, username, password;
         std::getline(iss, command, '\n');
-        printf("%s\n", command.c_str());
+        printf("Command used: %s\n", command.c_str());
         std::getline(iss, username, '\n');
-        printf("%s\n", username.c_str());
+        printf("Username: %s\n", username.c_str());
         std::getline(iss, password);
 
         const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
@@ -641,11 +690,6 @@ int main(int argc, char *argv[])
         std::cerr << "Usage: ./twmailer-server <port> <mail-spool-directoryname>" << std::endl;
         return 1;
     }
-
-    time_t timestamp;
-    time(&timestamp);
-    cout << ctime(&timestamp);
-
     int port = std::stoi(argv[1]);
     std::string spoolDirectory = argv[2];
 
