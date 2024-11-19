@@ -103,13 +103,18 @@ private:
     void handleClient(int client_fd)
     {                             // Handle the client connection
         char buffer[BUFFER_SIZE]; // Buffer to store received data
-        std::string message;
+        
         bool isLoggedIn = false;
+
         int loginAttempts = 3;
-        std::string clientIp = getClientIp(client_fd);
+
         time_t currentTime;
 
-        if (!isInBlackList(time(&currentTime), clientIp))
+        std::string message;
+        std::string clientIp = getClientIp(client_fd);
+        std::string timestampStr = to_string(time(&currentTime));
+
+        if (!isInBlackList(timestampStr, clientIp))
         {
             while (true)
             {
@@ -173,6 +178,10 @@ private:
                         break;
                 }
             }
+        }
+        if(isInBlackList(timestampStr, clientIp))
+        {
+            close(client_fd);
         }
     }
 
@@ -341,66 +350,107 @@ private:
         }
     }
 
-    void addToBlacklist(time_t timestamp, std::string clientIp)
-    {
-        std::string blacklist = "blacklist.txt";         // Create the message filename
-        std::ofstream outfile(blacklist, std::ios::app); // Open the file in append mode
-        if (outfile.is_open())
-        { // Check if the file was opened successfully
-            outfile << clientIp << " " << ctime(&timestamp) << "\n";
-            outfile.close();
-            cout << "Successfully added Client IP to Blacklist\n"
-                 << endl;
-            cout << clientIp << " " << ctime(&timestamp) << "\n";
-        }
-        else
-        { // Error saving the message
-            cout << "ERR adding Client to Blacklist\n"
-                 << endl;
-        }
+    void addToBlacklist(time_t timestamp, const std::string& clientIp)
+{
+    std::string blacklist = "blacklist.txt";         // Blacklist file name
+    std::ofstream outfile(blacklist, std::ios::app); // Open the file in append mode
+    if (outfile.is_open())
+    { 
+        // Store the IP and timestamp of when the client is added to the blacklist
+        outfile << clientIp << " " << ctime(&timestamp); 
+        outfile.close();
+        std::cout << "Successfully added Client IP to Blacklist\n" << clientIp << " " << ctime(&timestamp) << "\n";
     }
-
-    bool isInBlackList(time_t timestamp, std::string clientIp)
+    else
     {
-        std::string blacklist = "blacklist.txt";
-        std::ifstream infile(blacklist);    //open the file for output operations
+        std::cout << "Error adding Client to Blacklist\n";
+    }
+}
 
-        if(!infile.is_open())
-        {
-            cout << "Err adding blacklist to array\n";
-            return false;
-        }
 
-        std::string line;
+    bool isInBlackList(const std::string& timestampStr, const std::string& clientIp)
+{
+    std::string blacklist = "blacklist.txt"; 
+    std::ifstream infile(blacklist); 
 
-        while(std::getline(infile, line))
-        {
-        std::istringstream iss(line);
-        std::string ip;
-        std::time_t ts;
-
-        if(iss >> ip >> ts)
-        {
-            if(ip == clientIp)
-            {
-                std::cout << "Client IP is in the Blacklist: " << line << std::endl;
-                return true;
-            }
-            else
-            {
-                std::cout << "skipped malformed line: " << line << std::endl;
-            }
-        }
-        }
-
+    if (!infile.is_open())
+    {
+        std::cout << "Error opening blacklist file\n";
         return false;
     }
+
+    std::string line;
+
+    while (std::getline(infile, line))
+    {
+        std::istringstream iss(line);
+        std::string ip;
+        std::string timestampfromFile;
+
+        // Extract the IP and timestamp from the blacklist file
+        if (iss >> ip)
+        {
+            std::getline(iss, timestampfromFile);
+            timestampfromFile.erase(0, timestampfromFile.find_first_not_of(" \t"));
+
+            if (ip == clientIp)
+            {
+                std::cout << "Found client IP: " << line << std::endl;
+
+                struct std::tm tm = {};
+                std::istringstream ss(timestampfromFile);
+                ss >> std::get_time(&tm, "%a %b %d %H:%M:%S %Y"); // Parse timestamp
+
+                if (ss.fail())
+                {
+                    std::cout << "Failed to parse timestamp\n";
+                    continue; 
+                }
+
+                // Convert timestamp to time_t
+                std::time_t fileTimestamp = std::mktime(&tm);
+                if (fileTimestamp == -1)
+                {
+                    std::cout << "Failed to convert timestamp to time_t\n";
+                    continue; 
+                }
+
+                // Get the current timestamp
+                std::time_t currentTimestamp = std::time(nullptr);
+
+                // Check if the difference is less than 60 seconds
+                double diff = std::difftime(currentTimestamp, fileTimestamp);
+                if (diff < 60)
+                {
+                    std::cout << "Client is blacklisted: " << clientIp << " for one minute\n";
+                    return true; // Client is still blacklisted
+                }
+                else
+                {
+                    std::cout << "Blacklist expired for client: " << clientIp << "\n";
+                    return false; // Blacklist has expired
+                }
+            }
+        }
+    }
+    return false; // Return false if no matching line is found
+}
+
 
     bool processLogin(int client_fd, const std::string &message, int attempts)
     {
         if (attempts <= 0)
         {
             printf("Client tried to log in to much!\n");
+            return false;
+        }
+        std::string clientIp = getClientIp(client_fd);
+        time_t currentTime;
+        std::string timestampStr = to_string(time(&currentTime));
+
+        if(isInBlackList(timestampStr, clientIp))
+        {   const char blacklistMessage[] = "Your IP is blacklisted. Please wait a bit to try again\n";
+            send(client_fd, blacklistMessage, sizeof(blacklistMessage), 0);
             return false;
         }
 
