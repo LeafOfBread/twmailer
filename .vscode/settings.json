@@ -110,6 +110,10 @@
     "ratio": "cpp",
     "fstream": "cpp",
     "iomanip": "cpp",
-    "chrono": "cpp"
+    "chrono": "cpp",
+    "charconv": "cpp",
+    "format": "cpp",
+    "span": "cpp",
+    "variant": "cpp"
   }
 }

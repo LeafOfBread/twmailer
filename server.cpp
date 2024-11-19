@@ -86,6 +86,7 @@ private:
         char buffer[BUFFER_SIZE]; // Buffer to store received data
         std::string message;
         bool isLoggedIn = false;
+        int loginAttempts = 3;
 
         while (true)
         {                                                                            // Receive messages from the client
@@ -122,11 +123,17 @@ private:
                     break;
                 }
             }
-            else
+            else if (!isLoggedIn)
             {
                 if (message.substr(0, 5) == "LOGIN")
                 {
-                    processLogin(client_fd, message);
+                    if (processLogin(client_fd, message, loginAttempts))
+                        isLoggedIn = true;
+                    else if (!processLogin(client_fd, message, loginAttempts))
+                    {
+                        isLoggedIn = false;
+                        loginAttempts--;
+                    }
                 }
                 else if (message.substr(0, 4) == "QUIT")
                     exit(0);
@@ -317,110 +324,115 @@ private:
         }
     }*/
 
-    void processLogin(int client_fd, const std::string &message)
+    bool processLogin(int client_fd, const std::string &message, int attempts)
     {
-        bool isLoggedIn = false;
-        int attemps = 0;
-        time_t timestamp;
+        // time_t timestamp;
 
-        //unfinished
-        while (!isLoggedIn)
+        if (attempts != 3)
         {
-
-            std::stringstream iss(message);
-            std::string command, username, password;
-            std::getline(iss, command, '\n');
-            printf("%s\n", command.c_str());
-            std::getline(iss, username, '\n');
-            printf("%s\n", username.c_str());
-            std::getline(iss, password);
-
-            const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
-            const int ldapVersion = LDAP_VERSION3;
-            char ldapBindUser[256];
-            char rawLdapUser[128];
-
-            if (attemps >= 2)
-            {
-                //addToBlacklist(userIP, time(&timestamp))  TODO
-            }
-
-            if (username != "")
-            {
-                strcpy(rawLdapUser, username.c_str());
-                sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
-                printf("user set to: %s\n", ldapBindUser);
-            }
-            else
-            {
-                const char *rawLdapUserEnv = getenv("ldapuser");
-                if (rawLdapUserEnv == NULL)
-                {
-                    printf("user not found... set to empty string\n");
-                    strcpy(ldapBindUser, "");
-                }
-                else
-                {
-                    sprintf(ldapBindUser, "uid%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
-                    printf("user based on environment variable ldap user set to: %s\n", ldapBindUser);
-                }
-            }
-            char ldapBindPassword[256];
-            strcpy(ldapBindPassword, password.c_str());
-
-            int rc = 0;
-
-            LDAP *ldapHandle;
-            rc = ldap_initialize(&ldapHandle, ldapUri);
-            if (rc != LDAP_SUCCESS)
-            {
-                fprintf(stderr, "ldap_init failed\n");
-                return;
-            }
-            printf("connected to LDAP server %s\n", ldapUri);
-
-            rc = ldap_set_option(ldapHandle, LDAP_OPT_PROTOCOL_VERSION, &ldapVersion);
-            if (rc != LDAP_OPT_SUCCESS)
-            {
-                fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
-                ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-                return;
-            }
-
-            rc = ldap_start_tls_s(ldapHandle, NULL, NULL);
-            if (rc != LDAP_SUCCESS)
-            {
-                fprintf(stderr, "ldap_start_tls_s(): %s\n", ldap_err2string(rc));
-                ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-                return;
-            }
-            BerValue bindCredentials;
-            bindCredentials.bv_val = (char *)ldapBindPassword;
-            bindCredentials.bv_len = strlen(ldapBindPassword);
-            BerValue *servercredp; // server's credentials
-            rc = ldap_sasl_bind_s(
-                ldapHandle,
-                ldapBindUser,
-                LDAP_SASL_SIMPLE,
-                &bindCredentials,
-                NULL,
-                NULL,
-                &servercredp);
-            if (rc != LDAP_SUCCESS)
-            {
-                fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
-                ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-                attemps++;
-            }
-            else
-            {
-                isLoggedIn = true;
-                send(client_fd, "Successfully Logged In\n", 24, 0);
-            }
-            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            return false;
         }
-        attemps = 0;
-        return;
+
+        // unfinished
+        std::stringstream iss(message);
+        std::string command, username, password;
+        std::getline(iss, command, '\n');
+        printf("%s\n", command.c_str());
+        std::getline(iss, username, '\n');
+        printf("%s\n", username.c_str());
+        std::getline(iss, password);
+
+        const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
+        const int ldapVersion = LDAP_VERSION3;
+        char ldapBindUser[256];
+        char rawLdapUser[128];
+
+        if (attempts <= 0)
+        {
+            // addToBlacklist(userIP, time(&timestamp))  TODO
+            return false;
+        }
+
+        if (username != "")
+        {
+            strcpy(rawLdapUser, username.c_str());
+            sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
+            printf("user set to: %s\n", ldapBindUser);
+        }
+        else
+        {
+            const char *rawLdapUserEnv = getenv("ldapuser");
+            if (rawLdapUserEnv == NULL)
+            {
+                printf("user not found... set to empty string\n");
+                strcpy(ldapBindUser, "");
+            }
+            else
+            {
+                sprintf(ldapBindUser, "uid%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
+                printf("user based on environment variable ldap user set to: %s\n", ldapBindUser);
+            }
+        }
+        char ldapBindPassword[256];
+        strcpy(ldapBindPassword, password.c_str());
+
+        int rc = 0;
+
+        LDAP *ldapHandle;
+        rc = ldap_initialize(&ldapHandle, ldapUri);
+        if (rc != LDAP_SUCCESS)
+        {
+            fprintf(stderr, "ldap_init failed\n");
+            return false;
+        }
+        printf("connected to LDAP server %s\n", ldapUri);
+
+        rc = ldap_set_option(ldapHandle, LDAP_OPT_PROTOCOL_VERSION, &ldapVersion);
+        if (rc != LDAP_OPT_SUCCESS)
+        {
+            fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            return false;
+        }
+
+        rc = ldap_start_tls_s(ldapHandle, NULL, NULL);
+        if (rc != LDAP_SUCCESS)
+        {
+            fprintf(stderr, "ldap_start_tls_s(): %s\n", ldap_err2string(rc));
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            return false;
+        }
+        BerValue bindCredentials;
+        bindCredentials.bv_val = (char *)ldapBindPassword;
+        bindCredentials.bv_len = strlen(ldapBindPassword);
+        BerValue *servercredp; // server's credentials
+        rc = ldap_sasl_bind_s(
+            ldapHandle,
+            ldapBindUser,
+            LDAP_SASL_SIMPLE,
+            &bindCredentials,
+            NULL,
+            NULL,
+            &servercredp);
+        if (rc != LDAP_SUCCESS)
+        {
+            fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+
+            char attemptMessage[256]; // Allocate sufficient space
+            attempts--;
+            snprintf(attemptMessage, sizeof(attemptMessage) + 2, "Attempts Left: %d\n", attempts);
+            send(client_fd, attemptMessage, strlen(attemptMessage), 0);
+            return false;
+        }
+        else
+        {
+            std::string okMessage = "Successfully Logged In\n";
+            send(client_fd, okMessage.c_str(), okMessage.size(), 0);
+            return true;
+        }
+        return false;
+        // ldap_unbind_ext_s(ldapHandle, NULL, NULL);
     }
 
     void processDelete(int client_fd, const std::string &message)
