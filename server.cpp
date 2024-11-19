@@ -12,6 +12,7 @@
 #include "getpass.h"
 #include <ctime>
 #include <bits/stdc++.h>
+#include <sys/wait.h>
 
 using namespace std;
 
@@ -60,19 +61,38 @@ public:
         std::cout << "Server listening on port " << port << std::endl; // Print the port number
 
         while (true)
-        { // Accept incoming connections
-            sockaddr_in client_address;
-            socklen_t addr_len = sizeof(client_address);
-            int client_fd = accept(server_fd, (struct sockaddr *)&client_address, &addr_len);
-            if (client_fd < 0)
-            { // Check if the connection was successful
-                std::cerr << "Failed to accept client connection!" << std::endl;
-                continue;
-            }
-
-            handleClient(client_fd); // Handle the client connection
-            close(client_fd);        // Close the client connection
+    {
+        sockaddr_in client_address;
+        socklen_t addr_len = sizeof(client_address);
+        int client_fd = accept(server_fd, (struct sockaddr *)&client_address, &addr_len);
+        if (client_fd < 0)
+        {
+            std::cerr << "Failed to accept client connection!" << std::endl;
+            continue;
         }
+
+        // Fork to handle the client
+        pid_t pid = fork();
+
+        if (pid < 0)
+        {
+            std::cerr << "Fork failed!" << std::endl;
+            close(client_fd);
+        }
+        else if (pid == 0)
+        {
+            // Child process: handle the client
+            close(server_fd); // Child doesn't need the listening socket
+            handleClient(client_fd);
+            close(client_fd);
+            exit(0); // Terminate the child process when done
+        }
+        else
+        {
+            // Parent process: close the client socket
+            close(client_fd);
+        }
+    }
 
         close(server_fd); // Close the server socket
     }
