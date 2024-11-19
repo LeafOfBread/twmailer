@@ -2,6 +2,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include "getpass.h"
 
 const int BUFFER_SIZE = 2048;
 
@@ -148,14 +149,28 @@ private:
         std::string username;
         std::cout << "Enter Username: ";
         std::getline(std::cin, username);
-
-        std::string message = "LOGIN\n" + username + "\n";
+        char password[256];
+        strcpy(password, getpass());
+        std::string message = "LOGIN\n" + username + "\n" + password + "\n";
         send(sock, message.c_str(), message.size(), 0);
 
         char buffer[BUFFER_SIZE];
         recv(sock, buffer, sizeof(buffer) -1, 0);
         buffer[BUFFER_SIZE -1] = '\0';
         std::cout << buffer;
+
+        std::string response(buffer);
+        if(response == "Successfully Logged In\n")
+        {
+            isLoggedIn = true;
+            printf("Login Successful!\n");
+        }
+        else
+        {
+            isLoggedIn = false;
+            printf("Login Failed.\n");
+        }
+        
     }
 };
 
