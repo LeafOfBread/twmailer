@@ -10,8 +10,8 @@
 #include <string.h>
 #include <ldap.h>
 #include "getpass.h"
-#include <chrono>
 #include <ctime>
+#include <bits/stdc++.h>
 
 using namespace std;
 
@@ -81,62 +81,97 @@ private:
     int port;
     std::string spoolDirectory;
 
+    std::string getClientIp(int client_fd)
+    {
+        sockaddr_in client_addr;
+        socklen_t addr_len = sizeof(client_addr);
+        char ip_str[INET_ADDRSTRLEN];
+
+        if (getpeername(client_fd, (struct sockaddr *)&client_addr, &addr_len) == -1)
+        {
+            perror("getpeername failed\n");
+            return "";
+        }
+        if (inet_ntop(AF_INET, &client_addr.sin_addr, ip_str, size(ip_str)) == nullptr)
+        {
+            perror("inet_ntop failed\n");
+            return "";
+        }
+        return std::string(ip_str);
+    }
+
     void handleClient(int client_fd)
     {                             // Handle the client connection
         char buffer[BUFFER_SIZE]; // Buffer to store received data
         std::string message;
         bool isLoggedIn = false;
         int loginAttempts = 3;
+        std::string clientIp = getClientIp(client_fd);
+        time_t currentTime;
 
-        while (true)
-        {                                                                            // Receive messages from the client
-            ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0); // Receive data from the client
-            if (bytes_received <= 0)
-            { // Check if the connection was closed or an error occurred
-                std::cerr << "Client disconnected or error occurred!" << std::endl;
-                break;
-            }
-
-            buffer[bytes_received] = '\0'; // Null-terminate the received data
-            message = buffer;
-
-            if (isLoggedIn)
+        if (!isInBlackList(time(&currentTime), clientIp))
+        {
+            while (true)
             {
-                if (message.substr(0, 4) == "SEND")
-                {
-                    processSend(client_fd, message);
-                }
-                else if (message.substr(0, 4) == "LIST")
-                {
-                    processList(client_fd, message);
-                }
-                else if (message.substr(0, 4) == "READ")
-                {
-                    processRead(client_fd, message);
-                }
-                else if (message.substr(0, 3) == "DEL")
-                {
-                    processDelete(client_fd, message);
-                }
-                else if (message.substr(0, 4) == "QUIT")
-                {
+                ssize_t bytes_received = recv(client_fd, buffer, sizeof(buffer) - 1, 0); // Receive data from the client
+                if (bytes_received <= 0)
+                { // Check if the connection was closed or an error occurred
+                    std::cerr << "Client disconnected or error occurred!" << std::endl;
                     break;
                 }
-            }
-            else if (!isLoggedIn)
-            {
-                if (message.substr(0, 5) == "LOGIN")
+
+                buffer[bytes_received] = '\0'; // Null-terminate the received data
+                message = buffer;
+
+                if (loginAttempts <= 0)
                 {
-                    if (processLogin(client_fd, message, loginAttempts))
-                        isLoggedIn = true;
-                    else if (!processLogin(client_fd, message, loginAttempts))
+                    time_t timestamp;
+                    send(client_fd, "Login has failed too many times!\n", 34, 0);
+                    addToBlacklist(time(&timestamp), clientIp);
+                    close(client_fd);
+                }
+                if (isLoggedIn)
+                {
+                    printf("debug\n");
+                    if (message.substr(0, 4) == "SEND")
                     {
-                        isLoggedIn = false;
-                        loginAttempts--;
+                        processSend(client_fd, message);
+                    }
+                    else if (message.substr(0, 4) == "LIST")
+                    {
+                        processList(client_fd, message);
+                    }
+                    else if (message.substr(0, 4) == "READ")
+                    {
+                        processRead(client_fd, message);
+                    }
+                    else if (message.substr(0, 3) == "DEL")
+                    {
+                        processDelete(client_fd, message);
+                    }
+                    else if (message.substr(0, 4) == "QUIT")
+                    {
+                        break;
                     }
                 }
-                else if (message.substr(0, 4) == "QUIT")
-                    exit(0);
+                else if (!isLoggedIn && loginAttempts > 0)
+                {
+                    if (message.substr(0, 5) == "LOGIN")
+                    {
+                        if (processLogin(client_fd, message, loginAttempts) == true)
+                        {
+                            isLoggedIn = true;
+                        }
+
+                        else
+                        {
+                            isLoggedIn = false;
+                            loginAttempts--;
+                        }
+                    }
+                    else if (message.substr(0, 4) == "QUIT")
+                        break;
+                }
             }
         }
     }
@@ -306,34 +341,69 @@ private:
         }
     }
 
-    /*void addToBlacklist(std::string ipAddress, chrono currentTime)
+    void addToBlacklist(time_t timestamp, std::string clientIp)
     {
-        std::string blacklist = "blacklist.txt"; // Create the message filename
-        std::ofstream outfile(blacklist, std::ios::app);                           // Open the file in append mode
+        std::string blacklist = "blacklist.txt";         // Create the message filename
+        std::ofstream outfile(blacklist, std::ios::app); // Open the file in append mode
         if (outfile.is_open())
         { // Check if the file was opened successfully
-            outfile << ipAddress << " " << attemps "\n";
+            outfile << clientIp << " " << ctime(&timestamp) << "\n";
             outfile.close();
-            send(client_fd, "Message sent successfully.\n", 28, 0);
-            cout << "OK" << endl;
+            cout << "Successfully added Client IP to Blacklist\n"
+                 << endl;
+            cout << clientIp << " " << ctime(&timestamp) << "\n";
         }
         else
         { // Error saving the message
-            send(client_fd, "Error saving message.\n", 22, 0);
-            cout << "ERR" << endl;
+            cout << "ERR adding Client to Blacklist\n"
+                 << endl;
         }
-    }*/
+    }
 
-    bool processLogin(int client_fd, const std::string &message, int attempts)
+    bool isInBlackList(time_t timestamp, std::string clientIp)
     {
-        // time_t timestamp;
+        std::string blacklist = "blacklist.txt";
+        std::ifstream infile(blacklist);    //open the file for output operations
 
-        if (attempts != 3)
+        if(!infile.is_open())
         {
+            cout << "Err adding blacklist to array\n";
             return false;
         }
 
-        // unfinished
+        std::string line;
+
+        while(std::getline(infile, line))
+        {
+        std::istringstream iss(line);
+        std::string ip;
+        std::time_t ts;
+
+        if(iss >> ip >> ts)
+        {
+            if(ip == clientIp)
+            {
+                std::cout << "Client IP is in the Blacklist: " << line << std::endl;
+                return true;
+            }
+            else
+            {
+                std::cout << "skipped malformed line: " << line << std::endl;
+            }
+        }
+        }
+
+        return false;
+    }
+
+    bool processLogin(int client_fd, const std::string &message, int attempts)
+    {
+        if (attempts <= 0)
+        {
+            printf("Client tried to log in to much!\n");
+            return false;
+        }
+
         std::stringstream iss(message);
         std::string command, username, password;
         std::getline(iss, command, '\n');
@@ -346,12 +416,6 @@ private:
         const int ldapVersion = LDAP_VERSION3;
         char ldapBindUser[256];
         char rawLdapUser[128];
-
-        if (attempts <= 0)
-        {
-            // addToBlacklist(userIP, time(&timestamp))  TODO
-            return false;
-        }
 
         if (username != "")
         {
@@ -429,10 +493,11 @@ private:
         {
             std::string okMessage = "Successfully Logged In\n";
             send(client_fd, okMessage.c_str(), okMessage.size(), 0);
+            ldap_unbind_ext_s(ldapHandle, NULL, NULL);
             return true;
         }
+        ldap_unbind_ext_s(ldapHandle, NULL, NULL);
         return false;
-        // ldap_unbind_ext_s(ldapHandle, NULL, NULL);
     }
 
     void processDelete(int client_fd, const std::string &message)
