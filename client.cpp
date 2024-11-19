@@ -10,6 +10,7 @@ class MailClient {
 public:
     MailClient(const std::string& serverIP, int serverPort) : serverIP(serverIP), serverPort(serverPort) {}
     bool isLoggedIn = false;
+    std::string userName = "";
 
     void start() {  // Start the client
         int sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -30,7 +31,7 @@ public:
 
         std::string command;
         while (true) {  // Main loop
-            if(!isLoggedIn) std::cout << "Enter command | LOGIN |";
+            if(!isLoggedIn) std::cout << "Enter command | LOGIN | QUIT |";
             else std::cout << "Enter command | SEND | LIST | READ | DEL | QUIT |";
             std::getline(std::cin, command);
 
@@ -53,6 +54,7 @@ private:
     if(!isLoggedIn)
     {
         if (command == "LOGIN") userLogin(sock);
+        else if (command == "QUIT") exit(0);
         else std::cerr << "User isn't logged in!\n";
     }
     else{
@@ -71,9 +73,8 @@ private:
     }
 
     void sendMessage(int sock) {    // Send a message to the server
-    std::string username, receiver, subject, content, line;
-    std::cout << "Enter username: ";
-    std::getline(std::cin, username);
+    std::string receiver, subject, content, line;
+    std::cout << "Sender: " << this->userName << std::endl;
     std::cout << "Enter receiver: ";
     std::getline(std::cin, receiver);
     std::cout << "Enter subject: ";
@@ -89,7 +90,7 @@ private:
     }
 
     // Create the message to send to the server
-    std::string message = "SEND\n" + username + "\n" + receiver + "\n" + subject + "\n" + content + "\n";
+    std::string message = "SEND\n" + this->userName + "\n" + receiver + "\n" + subject + "\n" + content + "\n";
     send(sock, message.c_str(), message.size(), 0);
 
     // Receive the server's response
@@ -100,11 +101,10 @@ private:
 }
 
     void listMessages(int sock) {   // List all messages for a user
-    std::string username;
-    std::cout << "Enter username: ";
+    std::string username = this->userName;
     std::getline(std::cin, username);
 
-    std::string message = "LIST\n" + username + "\n";
+    std::string message = "LIST\n" + this->userName + "\n";
     send(sock, message.c_str(), message.size(), 0);
 
     char buffer[BUFFER_SIZE];
@@ -115,12 +115,12 @@ private:
 
     void readMessage(int sock) {    // Read a message
         std::string username, messageId;
-        std::cout << "Enter username: ";
+        username = this->userName;
         std::getline(std::cin, username);
         std::cout << "Enter message ID: ";
         std::getline(std::cin, messageId);
 
-        std::string message = "READ\n" + username + "\n" + messageId + "\n";
+        std::string message = "READ\n" + this->userName + "\n" + messageId + "\n";
         send(sock, message.c_str(), message.size(), 0); 
 
         char buffer[BUFFER_SIZE];
@@ -131,12 +131,12 @@ private:
 
     void deleteMessage(int sock) {  // Delete a message
         std::string username, messageId;
-        std::cout << "Enter username: ";
+        username = this->userName;
         std::getline(std::cin, username);
         std::cout << "Enter message ID: ";
         std::getline(std::cin, messageId);
 
-        std::string message = "DEL\n" + username + "\n" + messageId + "\n";
+        std::string message = "DEL\n" + this->userName + "\n" + messageId + "\n";
         send(sock, message.c_str(), message.size(), 0);
 
         char buffer[BUFFER_SIZE];
@@ -163,6 +163,7 @@ private:
         if(response == "Successfully Logged In\n")
         {
             isLoggedIn = true;
+            this->userName = username;
             printf("Login Successful!\n");
         }
         else
