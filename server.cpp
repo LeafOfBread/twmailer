@@ -13,18 +13,11 @@
 #include <ctime>
 #include <bits/stdc++.h>
 #include <sys/wait.h>
+#include <signal.h>
 
 using namespace std;
 
 const int BUFFER_SIZE = 2048;
-
-struct Message
-{
-    std::string sender;
-    std::string receiver;
-    std::string subject;
-    std::string content;
-};
 
 class MailServer
 {
@@ -33,9 +26,7 @@ public:
     MailServer(int port, const std::string &spoolDirectory) : port(port), spoolDirectory(spoolDirectory)
     {
         if (!std::filesystem::exists(spoolDirectory))
-        {
             std::filesystem::create_directory(spoolDirectory);
-        }
     }
     // Start the server
     void start()
@@ -56,8 +47,11 @@ public:
             std::cerr << "Binding failed!" << std::endl;
             return;
         }
-
-        listen(server_fd, 3);                                          // Listen for incoming connections
+        int rc;
+        if((rc = listen(server_fd, 3)) == -1)
+            std::cerr << "Error occured while listening\n";
+        
+        signal(SIGCHLD, SIG_IGN);
         std::cout << "Server listening on port " << port << std::endl; // Print the port number
 
         while (true)
@@ -159,34 +153,22 @@ private:
                 if (isLoggedIn)
                 {
                     if (message.substr(0, 4) == "SEND")
-                    {
                         processSend(client_fd, message);
-                    }
                     else if (message.substr(0, 4) == "LIST")
-                    {
                         processList(client_fd, message);
-                    }
                     else if (message.substr(0, 4) == "READ")
-                    {
                         processRead(client_fd, message);
-                    }
                     else if (message.substr(0, 3) == "DEL")
-                    {
                         processDelete(client_fd, message);
-                    }
                     else if (message.substr(0, 4) == "QUIT")
-                    {
                         break;
-                    }
                 }
                 else if (!isLoggedIn && loginAttempts > 0)
                 {
                     if (message.substr(0, 5) == "LOGIN")
                     {
                         if (processLogin(client_fd, message, loginAttempts) == true)
-                        {
                             isLoggedIn = true;
-                        }
 
                         else
                         {
@@ -200,9 +182,7 @@ private:
             }
         }
         if (isInBlackList(timestampStr, clientIp))
-        {
             close(client_fd);
-        }
     }
 
     void processSend(int client_fd, const std::string &message)
@@ -220,9 +200,7 @@ private:
         while (std::getline(iss, line))
         {
             if (line == ".")
-            {
                 break;
-            }
             content += line + "\n";
         }
 
@@ -403,9 +381,7 @@ private:
                       << clientIp << " " << ctime(&timestamp) << "\n";
         }
         else
-        {
             std::cout << "Error adding Client to Blacklist\n";
-        }
     }
 
     bool isInBlackList(const std::string &timestampStr, const std::string &clientIp)
@@ -512,17 +488,11 @@ private:
         fclose(tempFile);
 
         if (remove(filePath) != 0)
-        {
             perror("Error deleting original file");
-        }
         else if (rename("temp.txt", filePath) != 0)
-        {
             perror("Error renaming the temporary file");
-        }
         else
-        {
             printf("Entry for '%s' has been removed successfully\n", ipToRemove);
-        }
     }
 
     bool processLogin(int client_fd, const std::string &message, int attempts)
@@ -687,13 +657,11 @@ private:
             if (line == "-----")
             {
                 if (current_id != messageID)
-                {
                     messages.push_back(current_message); // Keep the message if not the one to delete
-                }
+
                 else
-                {
                     foundMessage = true; // Mark that we found and are deleting the message
-                }
+                    
                 current_message.clear(); // Reset for the next message
                 current_id++;            // Increment the message ID
             }

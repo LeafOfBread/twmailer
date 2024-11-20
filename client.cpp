@@ -41,7 +41,7 @@ public:
                 std::cout << "Enter command | LOGIN | QUIT |";
             else
                 std::cout << "Enter command | SEND | LIST | READ | DEL | QUIT |";
-            
+
             std::getline(std::cin, command);
 
             if (command == "QUIT")
@@ -74,25 +74,15 @@ private:
         else
         {
             if (command == "SEND")
-            {
                 sendMessage(sock);
-            }
             else if (command == "LIST")
-            {
                 listMessages(sock);
-            }
             else if (command == "READ")
-            {
                 readMessage(sock);
-            }
             else if (command == "DEL")
-            {
                 deleteMessage(sock);
-            }
             else
-            {
                 std::cerr << "Unknown command!" << std::endl;
-            }
         }
     }
 
@@ -110,9 +100,7 @@ private:
         { // lese content bis "." vorkommt
             std::getline(std::cin, line);
             if (line == ".")
-            {
                 break;
-            }
             content += line + "\n"; // Append new line an content
         }
 
@@ -122,18 +110,16 @@ private:
         std::cout << message << std::endl;
 
         // erhalte response
-        char buffer[BUFFER_SIZE]; // response wird im buffer gespeichert
-        memset(buffer, 0, sizeof(buffer));  //buffer wird zur sicherheit nochmal gecleart um extra daten zu vermeiden
+        char buffer[BUFFER_SIZE];          // response wird im buffer gespeichert
+        memset(buffer, 0, sizeof(buffer)); // buffer wird zur sicherheit nochmal gecleart um extra daten zu vermeiden
         ssize_t bytesReceived = recv(sock, buffer, sizeof(buffer) - 1, 0);
         if (bytesReceived > 0)
         {
-            buffer[bytesReceived] = '\0';   //null terminate!
+            buffer[bytesReceived] = '\0'; // null terminate!
             std::cout << buffer << std::endl;
         }
         else
-        {
             std::cerr << "Error receiving the message from the server\n";
-        }
     }
 
     void listMessages(int sock)
@@ -165,9 +151,7 @@ private:
             std::cout << buffer << "\n";
         }
         else
-        {
             std::cerr << "Error receiving message from server\n";
-        }
     }
 
     void deleteMessage(int sock)
@@ -215,9 +199,7 @@ private:
             this->userName = username;
         }
         else
-        {
             isLoggedIn = false;
-        }
     }
 };
 
