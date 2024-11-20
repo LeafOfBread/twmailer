@@ -61,38 +61,38 @@ public:
         std::cout << "Server listening on port " << port << std::endl; // Print the port number
 
         while (true)
-    {
-        sockaddr_in client_address;
-        socklen_t addr_len = sizeof(client_address);
-        int client_fd = accept(server_fd, (struct sockaddr *)&client_address, &addr_len);
-        if (client_fd < 0)
         {
-            std::cerr << "Failed to accept client connection!" << std::endl;
-            continue;
-        }
+            sockaddr_in client_address;
+            socklen_t addr_len = sizeof(client_address);
+            int client_fd = accept(server_fd, (struct sockaddr *)&client_address, &addr_len);
+            if (client_fd < 0)
+            {
+                std::cerr << "Failed to accept client connection!" << std::endl;
+                continue;
+            }
 
-        // Fork to handle the client
-        pid_t pid = fork();
+            // Fork to handle the client
+            pid_t pid = fork();
 
-        if (pid < 0)
-        {
-            std::cerr << "Fork failed!" << std::endl;
-            close(client_fd);
+            if (pid < 0)
+            {
+                std::cerr << "Fork failed!" << std::endl;
+                close(client_fd);
+            }
+            else if (pid == 0)
+            {
+                // Child process: handle the client
+                close(server_fd); // Child doesn't need the listening socket
+                handleClient(client_fd);
+                close(client_fd);
+                exit(0); // Terminate the child process when done
+            }
+            else
+            {
+                // Parent process: close the client socket
+                close(client_fd);
+            }
         }
-        else if (pid == 0)
-        {
-            // Child process: handle the client
-            close(server_fd); // Child doesn't need the listening socket
-            handleClient(client_fd);
-            close(client_fd);
-            exit(0); // Terminate the child process when done
-        }
-        else
-        {
-            // Parent process: close the client socket
-            close(client_fd);
-        }
-    }
 
         close(server_fd); // Close the server socket
     }
@@ -151,7 +151,8 @@ private:
                 if (loginAttempts <= 0)
                 {
                     time_t timestamp;
-                    send(client_fd, "Login has failed too many times!\n", 34, 0);
+                    std::string loginErrorMessage = "Login has failed too many times!\n";
+                    send(client_fd, loginErrorMessage.c_str(), loginErrorMessage.size(), 0);
                     addToBlacklist(time(&timestamp), clientIp);
                     close(client_fd);
                 }
@@ -207,12 +208,23 @@ private:
     void processSend(int client_fd, const std::string &message)
     { // Process the SEND command
         std::istringstream iss(message);
-        std::string command, username, receiver, subject, content;
+        std::string command, username, receiver, subject, content, line;
         std::getline(iss, command, '\n');
         std::getline(iss, username, '\n');
         std::getline(iss, receiver, '\n');
         std::getline(iss, subject, '\n');
-        std::getline(iss, content, '\n');
+
+        std::string okMessage = "Message sent successfully\n";
+        std::string errMessage = "Error saving message\n";
+
+        while (std::getline(iss, line))
+        {
+            if (line == ".")
+            {
+                break;
+            }
+            content += line + "\n";
+        }
 
         std::string message_filename = spoolDirectory + "/" + username + "_messages.txt"; // Create the message filename
         std::ofstream outfile(message_filename, std::ios::app);                           // Open the file in append mode
@@ -224,12 +236,12 @@ private:
                     << "Content: " << content << "\n"
                     << "-----\n";
             outfile.close();
-            send(client_fd, "Message sent successfully.\n", 28, 0);
+            send(client_fd, okMessage.c_str(), okMessage.size() - 1, 0);
             cout << "OK" << endl;
         }
         else
         { // Error saving the message
-            send(client_fd, "Error saving message.\n", 22, 0);
+            send(client_fd, errMessage.c_str(), errMessage.size(), 0);
             cout << "ERR" << endl;
         }
     }
@@ -240,6 +252,8 @@ private:
         std::string command, username;
         std::getline(iss, command, '\n');
         std::getline(iss, username, '\n');
+
+        std::string errMessage = "No messages found.\n";
 
         std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
         std::ifstream infile(message_filename);
@@ -278,13 +292,13 @@ private:
             }
             else
             { // No messages found
-                send(client_fd, "No messages found.\n", 19, 0);
+                send(client_fd, errMessage.c_str(), errMessage.size(), 0);
                 cout << "ERR" << endl;
             }
         }
         else
         { // Error opening the file
-            send(client_fd, "No messages found.\n", 19, 0);
+            send(client_fd, errMessage.c_str(), errMessage.size(), 0);
             cout << "ERR" << endl;
         }
     }
@@ -301,10 +315,14 @@ private:
     void processRead(int client_fd, const std::string &message)
     { // Process the READ command
         std::istringstream iss(message);
-        std::string command, username, messageIdStr;
+        std::string command, username, messageIdStr, line;
         std::getline(iss, command, '\n');
         std::getline(iss, username, '\n');
         std::getline(iss, messageIdStr, '\n');
+
+        std::string errInvalidFormat = "Invalid message ID format\n";
+        std::string errMsgNotFound = "Error, message not found\n";
+        std::string errOpeningFile = "Error occured while opening the file\n";
 
         // Trim messageIdStr to remove whitespace
         messageIdStr = trim(messageIdStr); // Trim whitespace from the message ID
@@ -317,7 +335,7 @@ private:
         }
         catch (std::invalid_argument &)
         {
-            send(client_fd, "Invalid message ID format.\n", 26, 0); // Send an error message
+            send(client_fd, errInvalidFormat.c_str(), errInvalidFormat.size(), 0); // Send an error message
             cout << "ERR" << endl;
             return;
         }
@@ -343,9 +361,12 @@ private:
                         std::getline(infile, line); // Receiver
                         response += line + "\n";    // Receiver
                         std::getline(infile, line); // Subject
-                        response += line + "\n";    // Subject
-                        std::getline(infile, line); // Content
-                        response += line + "\n";    // Content
+                        response += line + "\n";
+                        while (line != "-----")
+                        {
+                            std::getline(infile, line); // Content
+                            response += line + "\n";    // Content
+                        }
                         send(client_fd, response.c_str(), response.size(), 0);
                         std::cout << "OK" << std::endl;
                         return;
@@ -359,12 +380,12 @@ private:
             }
 
             infile.close();
-            send(client_fd, "Message ID not found.\n", 22, 0);
+            send(client_fd, errMsgNotFound.c_str(), errMsgNotFound.size(), 0);
             std::cout << "ERR" << std::endl;
         }
         else
         {
-            send(client_fd, "Error opening message file.\n", 28, 0);
+            send(client_fd, errOpeningFile.c_str(), errOpeningFile.size(), 0);
             std::cout << "ERR" << std::endl;
         }
     }
@@ -457,53 +478,52 @@ private:
     }
 
     void deleteEntryFromFile(const char *filePath, const char *ipToRemove)
-{
-    FILE *originalFile, *tempFile;
-    char line[256];
-
-    originalFile = fopen(filePath, "r");
-    if (originalFile == NULL)
     {
-        perror("Error while opening file");
-        return;
-    }
+        FILE *originalFile, *tempFile;
+        char line[256];
 
-    tempFile = fopen("temp.txt", "w");
-    if (tempFile == NULL)
-    {
-        perror("Error opening temporary file");
-        fclose(originalFile);
-        return;
-    }
-
-    while (fgets(line, sizeof(line), originalFile))
-    {
-        // Check if the line starts with the IP to remove
-        if (strncmp(line, ipToRemove, strlen(ipToRemove)) == 0 && isspace(line[strlen(ipToRemove)]))
+        originalFile = fopen(filePath, "r");
+        if (originalFile == NULL)
         {
-            // Skip this line as it matches the IP to remove
-            continue;
+            perror("Error while opening file");
+            return;
         }
-        fputs(line, tempFile); // Copy other lines to the temp file
-    }
 
-    fclose(originalFile);
-    fclose(tempFile);
+        tempFile = fopen("temp.txt", "w");
+        if (tempFile == NULL)
+        {
+            perror("Error opening temporary file");
+            fclose(originalFile);
+            return;
+        }
 
-    if (remove(filePath) != 0)
-    {
-        perror("Error deleting original file");
-    }
-    else if (rename("temp.txt", filePath) != 0)
-    {
-        perror("Error renaming the temporary file");
-    }
-    else
-    {
-        printf("Entry for '%s' has been removed successfully\n", ipToRemove);
-    }
-}
+        while (fgets(line, sizeof(line), originalFile))
+        {
+            // Check if the line starts with the IP to remove
+            if (strncmp(line, ipToRemove, strlen(ipToRemove)) == 0 && isspace(line[strlen(ipToRemove)]))
+            {
+                // Skip this line as it matches the IP to remove
+                continue;
+            }
+            fputs(line, tempFile); // Copy other lines to the temp file
+        }
 
+        fclose(originalFile);
+        fclose(tempFile);
+
+        if (remove(filePath) != 0)
+        {
+            perror("Error deleting original file");
+        }
+        else if (rename("temp.txt", filePath) != 0)
+        {
+            perror("Error renaming the temporary file");
+        }
+        else
+        {
+            printf("Entry for '%s' has been removed successfully\n", ipToRemove);
+        }
+    }
 
     bool processLogin(int client_fd, const std::string &message, int attempts)
     {
@@ -605,7 +625,7 @@ private:
             char attemptMessage[256]; // Allocate sufficient space
             attempts--;
             snprintf(attemptMessage, sizeof(attemptMessage) + 2, "Attempts Left: %d\n", attempts);
-            send(client_fd, attemptMessage, strlen(attemptMessage), 0);
+            send(client_fd, attemptMessage, sizeof(attemptMessage), 0);
             return false;
         }
         else
@@ -627,6 +647,11 @@ private:
         std::getline(iss, username, '\n');
         std::getline(iss, idStr, '\n');
 
+        std::string errMsgFormat = "Invalid message ID format\n";
+        std::string errOpeningMsg = "Error opening message file\n";
+        std::string successMsg = "Message deleted successfully\n";
+        std::string errIdNotFound = "Error, message ID not found.\n";
+
         int messageID; // Message ID to delete
         try
         {
@@ -634,7 +659,7 @@ private:
         }
         catch (const std::invalid_argument &e)
         { // Check if the ID is a number
-            send(client_fd, "Invalid message ID format.\n", 27, 0);
+            send(client_fd, errMsgFormat.c_str(), errMsgFormat.size(), 0);
             cout << "ERR" << endl;
             return;
         }
@@ -644,7 +669,7 @@ private:
 
         if (!infile.is_open())
         {
-            send(client_fd, "Error opening message file.\n", 28, 0);
+            send(client_fd, errOpeningMsg.c_str(), errOpeningMsg.size(), 0);
             cout << "ERR" << endl;
             return;
         }
@@ -680,7 +705,7 @@ private:
             std::ofstream outfile(message_filename, std::ios::trunc);
             if (!outfile.is_open())
             { // Check if the file was opened successfully
-                send(client_fd, "Error updating message file.\n", 29, 0);
+                send(client_fd, errOpeningMsg.c_str(), errOpeningMsg.size(), 0);
                 cout << "ERR" << endl;
                 return;
             }
@@ -692,12 +717,12 @@ private:
             }
             outfile.close();
 
-            send(client_fd, "Message deleted successfully.\n", 31, 0);
+            send(client_fd, successMsg.c_str(), successMsg.size(), 0);
             cout << "OK" << endl;
         }
         else
         {
-            send(client_fd, "Message ID not found.\n", 23, 0);
+            send(client_fd, errIdNotFound.c_str(), errIdNotFound.size(), 0);
             cout << "ERR" << endl;
         }
     }
