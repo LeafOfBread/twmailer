@@ -48,9 +48,9 @@ public:
             return;
         }
         int rc;
-        if((rc = listen(server_fd, 3)) == -1)
+        if ((rc = listen(server_fd, 3)) == -1)
             std::cerr << "Error occured while listening\n";
-        
+
         signal(SIGCHLD, SIG_IGN);
         std::cout << "Server listening on port " << port << std::endl; // Print the port number
 
@@ -65,26 +65,29 @@ public:
                 continue;
             }
 
-            // Fork to handle the client
-            pid_t pid = fork();
-
-            if (pid < 0)
-            {
-                std::cerr << "Fork failed!" << std::endl;
-                close(client_fd);
-            }
-            else if (pid == 0)
-            {
-                // Child process: handle the client
-                close(server_fd); // Child doesn't need the listening socket
-                handleClient(client_fd);
-                close(client_fd);
-                exit(0); // Terminate the child process when done
-            }
             else
             {
-                // Parent process: close the client socket
-                close(client_fd);
+                // Fork to handle the client
+                pid_t pid = fork();
+
+                if (pid < 0)
+                {
+                    std::cerr << "Fork failed!" << std::endl;
+                    close(client_fd);
+                }
+                else if (pid == 0)
+                {
+                    // Child process: handle the client
+                    close(server_fd); // Child doesn't need the listening socket
+                    handleClient(client_fd);
+                    close(client_fd);
+                    exit(0); // Terminate the child process when done
+                }
+                else
+                {
+                    // Parent process: close the client socket
+                    close(client_fd);
+                }
             }
         }
 
@@ -661,7 +664,7 @@ private:
 
                 else
                     foundMessage = true; // Mark that we found and are deleting the message
-                    
+
                 current_message.clear(); // Reset for the next message
                 current_id++;            // Increment the message ID
             }
