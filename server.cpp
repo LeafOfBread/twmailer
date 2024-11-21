@@ -219,7 +219,7 @@ private:
             content += line + "\n";
         }
 
-        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt"; // Create the message filename
+        std::string message_filename = spoolDirectory + "/" + receiver + "_messages.txt"; // Create the message filename
         std::ofstream outfile(message_filename, std::ios::app);                           // Open the file in append mode
         if (outfile.is_open())
         { // Check if the file was opened successfully
