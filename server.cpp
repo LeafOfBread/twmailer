@@ -194,23 +194,14 @@ private:
     void processSend(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the SEND command
         std::istringstream iss(message);
-        std::string command, username, receiver, subject, content, line;
+        std::string command, receiver, subject, content, line;
         std::getline(iss, command, '\n');
-        std::getline(iss, username, '\n');
         std::getline(iss, receiver, '\n');
         std::getline(iss, subject, '\n');
 
         std::string okMessage = "Message sent successfully\n";
         std::string errMessage = "Error saving message\n";
         std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
-
-        if(username != clientUsername)
-        {
-            cout << falseLogin;
-            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
-            close(client_fd);
-            return;
-        }
 
         while (std::getline(iss, line))
         {
@@ -223,7 +214,7 @@ private:
         std::ofstream outfile(message_filename, std::ios::app);                           // Open the file in append mode
         if (outfile.is_open())
         { // Check if the file was opened successfully
-            outfile << "Sender: " << username << "\n"
+            outfile << "Sender: " << clientUsername << "\n"
                     << "Receiver: " << receiver << "\n"
                     << "Subject: " << subject << "\n"
                     << "Content: " << content << "\n"
@@ -241,23 +232,9 @@ private:
 
     void processList(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the LIST command
-        std::istringstream iss(message);
-        std::string command, username;
-        std::getline(iss, command, '\n');
-        std::getline(iss, username, '\n');
-        std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
-
-        if(username != clientUsername)
-        {
-            cout << falseLogin;
-            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
-            close(client_fd);
-            return;
-        }
-
         std::string errMessage = "No messages found.\n";
 
-        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+        std::string message_filename = spoolDirectory + "/" + clientUsername + "_messages.txt";
         std::ifstream infile(message_filename);
         if (infile.is_open())
         { // Check if the file was opened successfully
@@ -266,7 +243,7 @@ private:
             int id = 0;
             bool foundMessage = false;
 
-            std::string sender, receiver, subject, content;
+            std::string sender, receiver, subject;
 
             // Read lines from the file
             while (std::getline(infile, line))
@@ -277,8 +254,7 @@ private:
                     sender = line;                  // Read sender line
                     std::getline(infile, receiver); // Read receiver line
                     std::getline(infile, subject);  // Read subject line
-                    std::getline(infile, content);  // Read content line
-                    response += "ID: " + std::to_string(id) + "\n" + sender + "\n" + receiver + "\n" + subject + "\n";
+                    response += "ID: " + std::to_string(id) + "\n" + sender + "\n" + subject + "\n";
                     id++;
                     // Skip separator line ("-----")
                     std::getline(infile, line);
@@ -317,23 +293,13 @@ private:
     void processRead(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the READ command
         std::istringstream iss(message);
-        std::string command, username, messageIdStr, line;
+        std::string command, messageIdStr, line;
         std::getline(iss, command, '\n');
-        std::getline(iss, username, '\n');
         std::getline(iss, messageIdStr, '\n');
 
         std::string errInvalidFormat = "Invalid message ID format\n";
         std::string errMsgNotFound = "Error, message not found\n";
         std::string errOpeningFile = "Error occured while opening the file\n";
-        std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
-
-        if(username != clientUsername)
-        {
-            cout << falseLogin;
-            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
-            close(client_fd);
-            return;
-        }
 
         // Trim messageIdStr to remove whitespace
         messageIdStr = trim(messageIdStr); // Trim whitespace from the message ID
@@ -351,7 +317,7 @@ private:
             return;
         }
 
-        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+        std::string message_filename = spoolDirectory + "/" + clientUsername + "_messages.txt";
         std::ifstream infile(message_filename);
 
         if (infile.is_open())
@@ -646,24 +612,14 @@ private:
     void processDelete(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the DELETE command
         std::istringstream iss(message);
-        std::string command, username, idStr;
+        std::string command, idStr;
         std::getline(iss, command, '\n');
-        std::getline(iss, username, '\n');
         std::getline(iss, idStr, '\n');
 
         std::string errMsgFormat = "Invalid message ID format\n";
         std::string errOpeningMsg = "Error opening message file\n";
         std::string successMsg = "Message deleted successfully\n";
         std::string errIdNotFound = "Error, message ID not found.\n";
-        std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
-
-        if(username != clientUsername)
-        {
-            cout << falseLogin;
-            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
-            close(client_fd);
-            return;
-        }
 
         int messageID; // Message ID to delete
         try
@@ -677,7 +633,7 @@ private:
             return;
         }
 
-        std::string message_filename = spoolDirectory + "/" + username + "_messages.txt";
+        std::string message_filename = spoolDirectory + "/" + clientUsername + "_messages.txt";
         std::ifstream infile(message_filename);
 
         if (!infile.is_open())

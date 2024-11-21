@@ -89,7 +89,6 @@ private:
     void sendMessage(int sock)
     { // Send a message to the server
         std::string receiver, subject, content, line;
-        std::cout << "Sender: " << this->userName << std::endl;
         std::cout << "Enter receiver: ";
         std::getline(std::cin, receiver);
         std::cout << "Enter subject: ";
@@ -105,7 +104,7 @@ private:
         }
 
         // contatenate message fuer server
-        std::string message = "SEND\n" + this->userName + "\n" + receiver + "\n" + subject + "\n" + content + "\n";
+        std::string message = "SEND\n" + receiver + "\n" + subject + "\n" + content + "\n";
         send(sock, message.c_str(), message.size(), 0);
         std::cout << message << std::endl;
 
@@ -125,7 +124,7 @@ private:
     void listMessages(int sock)
     { // List all messages for a user
         //std::string falseusername = "if23b123";
-        std::string message = "LIST\n" + this->userName + "\n";
+        std::string message = "LIST\n";
         send(sock, message.c_str(), message.size(), 0);
 
         char buffer[BUFFER_SIZE];
@@ -140,7 +139,7 @@ private:
         std::cout << "Enter message ID: ";
         std::getline(std::cin, messageId);
 
-        std::string message = "READ\n" + this->userName + "\n" + messageId + "\n";
+        std::string message = "READ\n" + messageId + "\n";
         send(sock, message.c_str(), message.size(), 0);
 
         char buffer[BUFFER_SIZE];
@@ -161,7 +160,7 @@ private:
         std::cout << "Enter message ID: ";
         std::getline(std::cin, messageId);
 
-        std::string message = "DEL\n" + this->userName + "\n" + messageId + "\n";
+        std::string message = "DEL\n" + messageId + "\n";
         send(sock, message.c_str(), message.size(), 0);
 
         char buffer[BUFFER_SIZE];
