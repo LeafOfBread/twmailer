@@ -1,19 +1,4 @@
 Sender: if23b168
-Receiver: sdfkj
-Subject: sdklj
-Content: sdfkljsd
-skdflj
-
-
------
-Sender: if23b168
-Receiver: sdfklj
-Subject: sdfklj
-Content: sfklsj
-
-
------
-Sender: if23b168
 Receiver: sdfklj
 Subject: sdfkjlds
 Content: dsklfjkldsjkldsj
@@ -38,6 +23,20 @@ Sender: if23b168
 Receiver: sfkldj
 Subject: sfkldjs
 Content: sdsfsd
+
+
+-----
+Sender: if23b168
+Receiver: sldkfj
+Subject: sdklfjdslkj
+Content: sdklfjdsklklfs
+
+
+-----
+Sender: if23b168
+Receiver: dklfgjkd
+Subject: skfdskl
+Content: ksdnvkldsjvkldsjl
 
 
 -----

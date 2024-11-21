@@ -183,6 +183,7 @@ private:
                         break;
                 }
             }
+            cout << "Client disconnected!\n";
         }
         if (isInBlackList(timestampStr, clientIp))
             close(client_fd);
