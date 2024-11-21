@@ -126,6 +126,7 @@ private:
 
         time_t currentTime;
 
+        std::string clientUsername;
         std::string message;
         std::string clientIp = getClientIp(client_fd);
         std::string timestampStr = to_string(time(&currentTime));
@@ -155,13 +156,13 @@ private:
                 if (isLoggedIn)
                 {
                     if (message.substr(0, 4) == "SEND")
-                        processSend(client_fd, message);
+                        processSend(client_fd, message, clientUsername);
                     else if (message.substr(0, 4) == "LIST")
-                        processList(client_fd, message);
+                        processList(client_fd, message, clientUsername);
                     else if (message.substr(0, 4) == "READ")
-                        processRead(client_fd, message);
+                        processRead(client_fd, message, clientUsername);
                     else if (message.substr(0, 3) == "DEL")
-                        processDelete(client_fd, message);
+                        processDelete(client_fd, message, clientUsername);
                     else if (message.substr(0, 4) == "QUIT")
                         break;
                 }
@@ -169,9 +170,11 @@ private:
                 {
                     if (message.substr(0, 5) == "LOGIN")
                     {
-                        if (processLogin(client_fd, message, loginAttempts) == true)
+                        if (processLogin(client_fd, message, loginAttempts, clientUsername) == true)
+                        {
                             isLoggedIn = true;
-
+                            cout << clientUsername << std::endl;
+                        }
                         else
                         {
                             isLoggedIn = false;
@@ -188,7 +191,7 @@ private:
             close(client_fd);
     }
 
-    void processSend(int client_fd, const std::string &message)
+    void processSend(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the SEND command
         std::istringstream iss(message);
         std::string command, username, receiver, subject, content, line;
@@ -199,6 +202,15 @@ private:
 
         std::string okMessage = "Message sent successfully\n";
         std::string errMessage = "Error saving message\n";
+        std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
+
+        if(username != clientUsername)
+        {
+            cout << falseLogin;
+            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
+            close(client_fd);
+            return;
+        }
 
         while (std::getline(iss, line))
         {
@@ -227,12 +239,21 @@ private:
         }
     }
 
-    void processList(int client_fd, const std::string &message)
+    void processList(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the LIST command
         std::istringstream iss(message);
         std::string command, username;
         std::getline(iss, command, '\n');
         std::getline(iss, username, '\n');
+        std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
+
+        if(username != clientUsername)
+        {
+            cout << falseLogin;
+            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
+            close(client_fd);
+            return;
+        }
 
         std::string errMessage = "No messages found.\n";
 
@@ -293,7 +314,7 @@ private:
         return str.substr(first, (last - first + 1));
     }
 
-    void processRead(int client_fd, const std::string &message)
+    void processRead(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the READ command
         std::istringstream iss(message);
         std::string command, username, messageIdStr, line;
@@ -304,6 +325,15 @@ private:
         std::string errInvalidFormat = "Invalid message ID format\n";
         std::string errMsgNotFound = "Error, message not found\n";
         std::string errOpeningFile = "Error occured while opening the file\n";
+        std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
+
+        if(username != clientUsername)
+        {
+            cout << falseLogin;
+            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
+            close(client_fd);
+            return;
+        }
 
         // Trim messageIdStr to remove whitespace
         messageIdStr = trim(messageIdStr); // Trim whitespace from the message ID
@@ -498,7 +528,7 @@ private:
             printf("Entry for '%s' has been removed successfully\n", ipToRemove);
     }
 
-    bool processLogin(int client_fd, const std::string &message, int attempts)
+    bool processLogin(int client_fd, const std::string &message, int attempts, std::string &sendUsername)
     {
         if (attempts <= 0)  //track login attempts
         {
@@ -606,13 +636,14 @@ private:
             std::string okMessage = "Successfully Logged In\n";
             send(client_fd, okMessage.c_str(), okMessage.size(), 0);    //send success message to client
             ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+            sendUsername = username;
             return true;
         }
         ldap_unbind_ext_s(ldapHandle, NULL, NULL);                      //unbind
         return false;
     }
 
-    void processDelete(int client_fd, const std::string &message)
+    void processDelete(int client_fd, const std::string &message, std::string clientUsername)
     { // Process the DELETE command
         std::istringstream iss(message);
         std::string command, username, idStr;
@@ -624,6 +655,15 @@ private:
         std::string errOpeningMsg = "Error opening message file\n";
         std::string successMsg = "Message deleted successfully\n";
         std::string errIdNotFound = "Error, message ID not found.\n";
+        std::string falseLogin = "Username sent from Client and stored username from Login do not match!!\n";
+
+        if(username != clientUsername)
+        {
+            cout << falseLogin;
+            send(client_fd, falseLogin.c_str(), falseLogin.size(), 0);
+            close(client_fd);
+            return;
+        }
 
         int messageID; // Message ID to delete
         try

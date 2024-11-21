@@ -124,6 +124,7 @@ private:
 
     void listMessages(int sock)
     { // List all messages for a user
+        //std::string falseusername = "if23b123";
         std::string message = "LIST\n" + this->userName + "\n";
         send(sock, message.c_str(), message.size(), 0);
 
