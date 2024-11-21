@@ -15,9 +15,8 @@
 #include <sys/wait.h>
 #include <signal.h>
 
+#define BUFFER_SIZE 2048
 using namespace std;
-
-const int BUFFER_SIZE = 2048;
 
 class MailServer
 {
@@ -98,7 +97,7 @@ private:
     int port;
     std::string spoolDirectory;
 
-    std::string getClientIp(int client_fd)
+    std::string getClientIp(int client_fd)  //get IP of client as string
     {
         sockaddr_in client_addr;
         socklen_t addr_len = sizeof(client_addr);
@@ -183,7 +182,7 @@ private:
                         break;
                 }
             }
-            cout << "Client disconnected!\n";
+            cout << "Client disconnected!\n";   //when loop finishes, client has disconnected
         }
         if (isInBlackList(timestampStr, clientIp))
             close(client_fd);
@@ -501,23 +500,23 @@ private:
 
     bool processLogin(int client_fd, const std::string &message, int attempts)
     {
-        if (attempts <= 0)
+        if (attempts <= 0)  //track login attempts
         {
             printf("Client tried to log in to much!\n");
             return false;
         }
-        std::string clientIp = getClientIp(client_fd);
+        std::string clientIp = getClientIp(client_fd);  //get ip as string
         time_t currentTime;
-        std::string timestampStr = to_string(time(&currentTime));
+        std::string timestampStr = to_string(time(&currentTime));   //get timestamp as string
 
-        if (isInBlackList(timestampStr, clientIp))
+        if (isInBlackList(timestampStr, clientIp))  //wenn blacklisted ->
         {
             const char blacklistMessage[] = "Your IP is blacklisted. Please wait a bit to try again\n";
             send(client_fd, blacklistMessage, sizeof(blacklistMessage), 0);
             return false;
         }
 
-        std::stringstream iss(message);
+        std::stringstream iss(message);             //get user credentials
         std::string command, username, password;
         std::getline(iss, command, '\n');
         printf("Command used: %s\n", command.c_str());
@@ -525,12 +524,12 @@ private:
         printf("Username: %s\n", username.c_str());
         std::getline(iss, password);
 
-        const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
+        const char *ldapUri = "ldap://ldap.technikum-wien.at:389";  //ldap address
         const int ldapVersion = LDAP_VERSION3;
         char ldapBindUser[256];
         char rawLdapUser[128];
 
-        if (username != "")
+        if (username != "") //error handling
         {
             strcpy(rawLdapUser, username.c_str());
             sprintf(ldapBindUser, "uid=%s,ou=people,dc=technikum-wien,dc=at", rawLdapUser);
@@ -557,7 +556,7 @@ private:
 
         LDAP *ldapHandle;
         rc = ldap_initialize(&ldapHandle, ldapUri);
-        if (rc != LDAP_SUCCESS)
+        if (rc != LDAP_SUCCESS)                         //error handling
         {
             fprintf(stderr, "ldap_init failed\n");
             return false;
@@ -579,7 +578,7 @@ private:
             ldap_unbind_ext_s(ldapHandle, NULL, NULL);
             return false;
         }
-        BerValue bindCredentials;
+        BerValue bindCredentials;   //client's credentials
         bindCredentials.bv_val = (char *)ldapBindPassword;
         bindCredentials.bv_len = strlen(ldapBindPassword);
         BerValue *servercredp; // server's credentials
@@ -591,7 +590,7 @@ private:
             NULL,
             NULL,
             &servercredp);
-        if (rc != LDAP_SUCCESS)
+        if (rc != LDAP_SUCCESS)             //error handling
         {
             fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
             ldap_unbind_ext_s(ldapHandle, NULL, NULL);
@@ -602,14 +601,14 @@ private:
             send(client_fd, attemptMessage, sizeof(attemptMessage), 0);
             return false;
         }
-        else
+        else        //success
         {
             std::string okMessage = "Successfully Logged In\n";
-            send(client_fd, okMessage.c_str(), okMessage.size(), 0);
+            send(client_fd, okMessage.c_str(), okMessage.size(), 0);    //send success message to client
             ldap_unbind_ext_s(ldapHandle, NULL, NULL);
             return true;
         }
-        ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+        ldap_unbind_ext_s(ldapHandle, NULL, NULL);                      //unbind
         return false;
     }
 
